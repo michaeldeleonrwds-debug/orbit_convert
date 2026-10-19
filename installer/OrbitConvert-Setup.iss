@@ -1,6 +1,6 @@
 #define MyAppName "OrbitConvert"
 #define MyAppVersion "0.1.0"
-#define MyAppPublisher "Michael De Leon"
+#define MyAppPublisher "KDN"
 #define MyAppURL "https://github.com/michaeldeleonrwds-debug/orbit_convert"
 #define MyAppExeName "orbit-app.exe"
 
