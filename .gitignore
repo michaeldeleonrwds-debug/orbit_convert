@@ -10,3 +10,4 @@
 # Windows build artifacts
 *.pdb
 *.ilk
+installer/dist/
