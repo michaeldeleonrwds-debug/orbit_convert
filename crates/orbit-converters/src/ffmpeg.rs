@@ -1,8 +1,10 @@
 use orbit_core::formats::FileFormat;
+use orbit_core::probe::probe_media;
 use orbit_core::registry::{ConversionError, ConversionOptions, Converter, ProgressReporter};
 use std::io::BufRead;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::Ordering;
 use tracing::{debug, error, info};
 
 #[cfg(windows)]
@@ -62,29 +64,6 @@ impl FfmpegConverter {
             None
         }
     }
-
-    fn is_video(fmt: FileFormat) -> bool {
-        matches!(
-            fmt,
-            FileFormat::Mp4
-                | FileFormat::Mov
-                | FileFormat::Mkv
-                | FileFormat::Avi
-                | FileFormat::Webm
-        )
-    }
-
-    fn is_audio(fmt: FileFormat) -> bool {
-        matches!(
-            fmt,
-            FileFormat::Mp3
-                | FileFormat::Wav
-                | FileFormat::Flac
-                | FileFormat::Aac
-                | FileFormat::M4a
-                | FileFormat::Ogg
-        )
-    }
 }
 
 impl Converter for FfmpegConverter {
@@ -97,23 +76,19 @@ impl Converter for FfmpegConverter {
             return false;
         }
 
-        // 1. Video to Video
-        if Self::is_video(from) && Self::is_video(to) {
-            return true;
+        // 1. Video to Video (and Video to Animated GIF/WebP)
+        if from.is_video() {
+            if to.is_video() || to == FileFormat::Gif || to == FileFormat::Webp {
+                return true;
+            }
+            // Video to Audio (extraction)
+            if to.is_audio() {
+                return true;
+            }
         }
 
-        // 2. Video to Audio (extraction)
-        if Self::is_video(from) && Self::is_audio(to) {
-            return true;
-        }
-
-        // 3. Audio to Audio (transcoding)
-        if Self::is_audio(from) && Self::is_audio(to) {
-            return true;
-        }
-
-        // 4. Video to Animated GIF
-        if Self::is_video(from) && to == FileFormat::Gif {
+        // 2. Audio to Audio (transcoding)
+        if from.is_audio() && to.is_audio() {
             return true;
         }
 
@@ -124,7 +99,7 @@ impl Converter for FfmpegConverter {
         &self,
         input: &Path,
         output: &Path,
-        _options: &ConversionOptions,
+        options: &ConversionOptions,
         progress: ProgressReporter<'_>,
     ) -> Result<(), ConversionError> {
         if !self.available {
@@ -149,11 +124,28 @@ impl Converter for FfmpegConverter {
             ConversionError::InvalidInput(format!("Unrecognized target extension '{}'", to_ext))
         })?;
 
-        if let Some(cb) = progress {
-            cb(0.05);
+        // Audio extraction verification:
+        // Ensure source file actually has an audio stream before attempting extraction
+        if from_fmt.is_video() && to_fmt.is_audio() {
+            if let Some(info) = probe_media(input) {
+                if !info.has_audio {
+                    return Err(ConversionError::ProcessingError(
+                        format!(
+                            "Source video '{}' does not contain an audio stream to extract to {}",
+                            input.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+                            to_fmt.display_label()
+                        ),
+                    ));
+                }
+            }
         }
 
-        let total_duration_secs = Self::get_media_duration_secs(input);
+        if let Some(cb) = progress {
+            cb(0.02);
+        }
+
+        let total_duration_secs = Self::get_media_duration_secs(input)
+            .or_else(|| probe_media(input).and_then(|i| i.duration_secs));
         let total_duration_us = total_duration_secs
             .map(|s| (s * 1_000_000.0) as u64)
             .unwrap_or(0);
@@ -162,6 +154,13 @@ impl Converter for FfmpegConverter {
         #[cfg(windows)]
         cmd.creation_flags(CREATE_NO_WINDOW);
 
+        // Hardware acceleration if specified
+        if let Some(ref hw) = options.hardware_accel {
+            if hw != "none" {
+                cmd.arg("-hwaccel").arg(hw);
+            }
+        }
+
         cmd.arg("-y") // Overwrite output file
             .arg("-progress")
             .arg("pipe:1")
@@ -169,73 +168,243 @@ impl Converter for FfmpegConverter {
             .arg("-i")
             .arg(input);
 
+        if options.preserve_metadata {
+            cmd.args(&["-map_metadata", "0"]);
+        }
+
         // Configure transcoding arguments depending on destination format
-        match (Self::is_video(from_fmt), Self::is_audio(from_fmt), to_fmt) {
-            // Video -> Audio (Stream extraction)
-            (true, _, FileFormat::Mp3) | (false, true, FileFormat::Mp3) => {
-                cmd.args(&["-vn", "-c:a", "libmp3lame", "-q:a", "2"]);
-            }
-            (true, _, FileFormat::Wav) | (false, true, FileFormat::Wav) => {
-                cmd.args(&["-vn", "-c:a", "pcm_s16le"]);
-            }
-            (true, _, FileFormat::Aac) | (false, true, FileFormat::Aac) => {
-                cmd.args(&["-vn", "-c:a", "aac", "-b:a", "192k"]);
-            }
-            (true, _, FileFormat::M4a) | (false, true, FileFormat::M4a) => {
-                cmd.args(&["-vn", "-c:a", "aac", "-b:a", "192k"]);
-            }
-            (true, _, FileFormat::Flac) | (false, true, FileFormat::Flac) => {
-                cmd.args(&["-vn", "-c:a", "flac"]);
-            }
-            (true, _, FileFormat::Ogg) | (false, true, FileFormat::Ogg) => {
-                cmd.args(&["-vn", "-c:a", "libvorbis", "-q:a", "5"]);
-            }
+        if options.stream_copy && from_fmt == to_fmt {
+            cmd.args(&["-c", "copy"]);
+        } else {
+            match (from_fmt.is_video(), from_fmt.is_audio(), to_fmt) {
+                // Video -> Audio (Stream extraction) or Audio -> Audio (Transcoding)
+                (_, _, FileFormat::Mp3) => {
+                    let bitrate = options.audio_bitrate.as_deref().unwrap_or("320k");
+                    cmd.args(&["-vn", "-c:a", "libmp3lame", "-b:a", bitrate]);
+                }
+                (_, _, FileFormat::Wav) => {
+                    cmd.args(&["-vn", "-c:a", "pcm_s16le"]);
+                }
+                (_, _, FileFormat::Aac) => {
+                    let bitrate = options.audio_bitrate.as_deref().unwrap_or("192k");
+                    cmd.args(&["-vn", "-c:a", "aac", "-b:a", bitrate]);
+                }
+                (_, _, FileFormat::M4a) => {
+                    let bitrate = options.audio_bitrate.as_deref().unwrap_or("192k");
+                    cmd.args(&["-vn", "-c:a", "aac", "-b:a", bitrate]);
+                }
+                (_, _, FileFormat::Flac) => {
+                    cmd.args(&["-vn", "-c:a", "flac"]);
+                }
+                (_, _, FileFormat::Ogg) => {
+                    cmd.args(&["-vn", "-c:a", "libvorbis", "-q:a", "6"]);
+                }
+                (_, _, FileFormat::Opus) => {
+                    let bitrate = options.audio_bitrate.as_deref().unwrap_or("160k");
+                    cmd.args(&["-vn", "-c:a", "libopus", "-b:a", bitrate]);
+                }
 
-            // Video -> Animated GIF
-            (true, _, FileFormat::Gif) => {
-                cmd.args(&["-vf", "fps=15,scale=480:-1:flags=lanczos", "-c:v", "gif"]);
-            }
+                // Video -> Animated GIF (High-Quality Palette Generation)
+                (true, _, FileFormat::Gif) => {
+                    cmd.args(&[
+                        "-vf",
+                        "fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128[p];[s1][p]paletteuse=dither=bayer",
+                        "-c:v",
+                        "gif",
+                    ]);
+                }
 
-            // Video -> Video Transcoding
-            (true, _, FileFormat::Mp4) => {
-                cmd.args(&[
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-c:a",
-                    "aac",
-                    "-b:a",
-                    "192k",
-                ]);
-            }
-            (true, _, FileFormat::Webm) => {
-                cmd.args(&[
-                    "-c:v",
-                    "libvpx-vp9",
-                    "-b:v",
-                    "0",
-                    "-crf",
-                    "30",
-                    "-c:a",
-                    "libopus",
-                ]);
-            }
-            (true, _, FileFormat::Mkv) => {
-                cmd.args(&["-c:v", "libx264", "-c:a", "aac"]);
-            }
-            (true, _, FileFormat::Mov) => {
-                cmd.args(&["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"]);
-            }
-            (true, _, FileFormat::Avi) => {
-                cmd.args(&["-c:v", "mpeg4", "-q:v", "4", "-c:a", "mp3"]);
-            }
+                // Video -> Animated WebP
+                (true, _, FileFormat::Webp) => {
+                    cmd.args(&[
+                        "-vcodec",
+                        "libwebp",
+                        "-loop",
+                        "0",
+                        "-vf",
+                        "fps=15,scale=480:-1:flags=lanczos",
+                        "-q:v",
+                        "75",
+                    ]);
+                }
 
-            _ => {
-                return Err(ConversionError::UnsupportedConversion {
-                    from: from_fmt,
-                    to: to_fmt,
-                });
+                // Video -> Video Transcoding
+                (true, _, FileFormat::Mp4) => {
+                    let v_codec = options.video_codec.as_deref().unwrap_or("libx264");
+                    let a_codec = options.audio_codec.as_deref().unwrap_or("aac");
+                    let crf_str = options.video_crf.unwrap_or(23).to_string();
+
+                    cmd.args(&[
+                        "-c:v",
+                        v_codec,
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-preset",
+                        "medium",
+                        "-crf",
+                        &crf_str,
+                        "-c:a",
+                        a_codec,
+                        "-b:a",
+                        "192k",
+                    ]);
+                }
+                (true, _, FileFormat::Webm) => {
+                    let v_codec = options.video_codec.as_deref().unwrap_or("libvpx-vp9");
+                    let a_codec = options.audio_codec.as_deref().unwrap_or("libopus");
+                    let crf_str = options.video_crf.unwrap_or(30).to_string();
+
+                    cmd.args(&[
+                        "-c:v",
+                        v_codec,
+                        "-b:v",
+                        "0",
+                        "-crf",
+                        &crf_str,
+                        "-c:a",
+                        a_codec,
+                        "-b:a",
+                        "128k",
+                    ]);
+                }
+                (true, _, FileFormat::Mkv) => {
+                    cmd.args(&[
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-preset",
+                        "medium",
+                        "-crf",
+                        "23",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
+                    ]);
+                }
+                (true, _, FileFormat::Mov) => {
+                    let is_prores = options
+                        .video_codec
+                        .as_deref()
+                        .map_or(false, |c| c.contains("prores"));
+                    if is_prores {
+                        cmd.args(&[
+                            "-c:v",
+                            "prores_ks",
+                            "-profile:v",
+                            "3",
+                            "-c:a",
+                            "pcm_s16le",
+                        ]);
+                    } else {
+                        cmd.args(&[
+                            "-c:v",
+                            "libx264",
+                            "-pix_fmt",
+                            "yuv420p",
+                            "-preset",
+                            "medium",
+                            "-crf",
+                            "23",
+                            "-c:a",
+                            "aac",
+                            "-b:a",
+                            "192k",
+                        ]);
+                    }
+                }
+                (true, _, FileFormat::Avi) => {
+                    cmd.args(&[
+                        "-c:v",
+                        "mpeg4",
+                        "-q:v",
+                        "3",
+                        "-c:a",
+                        "libmp3lame",
+                        "-b:a",
+                        "192k",
+                    ]);
+                }
+                (true, _, FileFormat::Wmv) => {
+                    cmd.args(&[
+                        "-c:v",
+                        "wmv2",
+                        "-b:v",
+                        "3000k",
+                        "-c:a",
+                        "wmav2",
+                        "-b:a",
+                        "192k",
+                    ]);
+                }
+                (true, _, FileFormat::Flv) => {
+                    cmd.args(&[
+                        "-c:v",
+                        "flv",
+                        "-c:a",
+                        "libmp3lame",
+                        "-b:a",
+                        "128k",
+                    ]);
+                }
+                (true, _, FileFormat::Mpeg) => {
+                    cmd.args(&[
+                        "-c:v",
+                        "mpeg2video",
+                        "-b:v",
+                        "4000k",
+                        "-c:a",
+                        "mp2",
+                        "-b:a",
+                        "192k",
+                    ]);
+                }
+                (true, _, FileFormat::M4v) => {
+                    cmd.args(&[
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
+                    ]);
+                }
+                (true, _, FileFormat::Ts) => {
+                    cmd.args(&[
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
+                    ]);
+                }
+
+                _ => {
+                    return Err(ConversionError::UnsupportedConversion {
+                        from: from_fmt,
+                        to: to_fmt,
+                    });
+                }
+            }
+        }
+
+        // Apply resolution scaling if specified
+        if let Some(ref res) = options.resolution {
+            if res != "original" && !res.is_empty() {
+                cmd.args(&["-vf", &format!("scale={}", res)]);
+            }
+        }
+
+        // Apply custom framerate if specified
+        if let Some(fps) = options.frame_rate {
+            if fps > 0.0 {
+                cmd.args(&["-r", &fps.to_string()]);
             }
         }
 
@@ -250,7 +419,7 @@ impl Converter for FfmpegConverter {
             .spawn()
             .map_err(|e| ConversionError::ProcessingError(format!("Failed to spawn ffmpeg: {}", e)))?;
 
-        // Drain stderr in background thread to prevent pipe buffer deadlock
+        // Drain stderr in background thread to prevent buffer deadlocks
         let stderr_pipe = child.stderr.take();
         let stderr_thread = std::thread::spawn(move || {
             let mut err_data = Vec::new();
@@ -263,6 +432,14 @@ impl Converter for FfmpegConverter {
         if let Some(stdout_pipe) = child.stdout.take() {
             let reader = std::io::BufReader::new(stdout_pipe);
             for line in reader.lines() {
+                // Check cancellation request
+                if let Some(cancel) = options.cancel_flag.as_ref() {
+                    if cancel.load(Ordering::Relaxed) {
+                        let _ = child.kill();
+                        return Err(ConversionError::Cancelled);
+                    }
+                }
+
                 if let Ok(l) = line {
                     if let Some(val) = l.strip_prefix("out_time_us=") {
                         if let Ok(us) = val.trim().parse::<u64>() {
@@ -290,6 +467,13 @@ impl Converter for FfmpegConverter {
         let stderr = String::from_utf8_lossy(&stderr_bytes);
 
         if !status.success() {
+            // Check if process was killed due to user cancellation
+            if let Some(cancel) = options.cancel_flag.as_ref() {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(ConversionError::Cancelled);
+                }
+            }
+
             error!("FFmpeg execution failed: {}", stderr);
 
             if stderr.contains("does not contain any stream") || stderr.contains("no audio streams")

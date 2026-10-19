@@ -127,6 +127,26 @@ fn make_capability_matrix_model(
     ModelRc::new(VecModel::from(items))
 }
 
+fn format_file_size(bytes: u64) -> String {
+    if bytes == 0 {
+        return String::new();
+    }
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.2} GB", b / GB)
+    } else if b >= MB {
+        format!("{:.1} MB", b / MB)
+    } else if b >= KB {
+        format!("{:.0} KB", b / KB)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 fn main() {
     // Attach to parent console if run from CLI (PowerShell / cmd.exe)
     unsafe {
@@ -183,6 +203,7 @@ fn main() {
             initial_config.jpeg_bg_color[2],
         ),
         ico_sizes: vec![16, 32, 48, 64, 128, 256],
+        ..ConversionOptions::default()
     };
 
     let job_manager = JobManager::new(registry.clone(), conversion_options);
@@ -203,6 +224,7 @@ fn main() {
 
     // In-memory History store
     let history_store: Arc<Mutex<Vec<HistoryItem>>> = Arc::new(Mutex::new(Vec::new()));
+    let active_conversion_id: Arc<Mutex<Option<u64>>> = Arc::new(Mutex::new(None));
 
     // Populate initial MainWindow properties from AppConfig
     {
@@ -334,10 +356,11 @@ fn main() {
 
         let is_success = matches!(&record.state, JobState::Completed { .. });
 
-        let (status_text, out_path_str, duration_ms) = match &record.state {
+        let (status_text, out_path_str, duration_ms, output_size_str) = match &record.state {
             JobState::Completed {
                 output_path,
                 duration_ms,
+                output_size_bytes,
             } => {
                 let fname = output_path
                     .file_name()
@@ -351,23 +374,29 @@ fn main() {
                 } else {
                     format!("{:.1}s", dur_secs)
                 };
+                let size_str = format_file_size(*output_size_bytes);
 
                 if show_notifs {
                     let title = format!("OrbitConvert: {} Ready", record.target_format);
-                    let msg = format!("Saved {} in {}", fname, dur_str);
+                    let msg = if size_str.is_empty() {
+                        format!("Saved {} in {}", fname, dur_str)
+                    } else {
+                        format!("Saved {} ({}) in {}", fname, size_str, dur_str)
+                    };
                     tray::send_global_notification(&title, &msg, false);
                 }
                 (
                     format!("Completed in {}", dur_str),
                     output_path.display().to_string(),
                     *duration_ms as i32,
+                    size_str,
                 )
             }
             JobState::Failed { error } => {
                 if show_notifs {
                     tray::send_global_notification("OrbitConvert: Conversion Failed", error, true);
                 }
-                (format!("Failed: {}", error), String::new(), 0)
+                (format!("Failed: {}", error), String::new(), 0, String::new())
             }
             _ => return,
         };
@@ -384,6 +413,7 @@ fn main() {
             target_ext: record.target_format.display_label().into(),
             output_path: out_path_str.clone().into(),
             duration_ms,
+            output_size_str: output_size_str.into(),
             is_success,
             status_text: status_text.clone().into(),
         };
@@ -553,7 +583,8 @@ fn main() {
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();
-                        let targets = registry_for_browse.get_available_targets(fmt);
+                        let targets = registry_for_browse
+                            .get_available_targets_for_file(fmt, Some(&file_path));
                         let default_target = targets
                             .first()
                             .map(|f| f.display_label())
@@ -590,6 +621,7 @@ fn main() {
         let m_weak = main_window.as_weak();
         let job_mgr_for_manual = job_manager.clone();
         let config_for_manual = config.clone();
+        let active_id_for_manual = active_conversion_id.clone();
         main_window.on_start_manual_conversion(move || {
             if let Some(m) = m_weak.upgrade() {
                 let src_path_str = m.get_convert_source_path().to_string();
@@ -626,7 +658,48 @@ fn main() {
                     "Starting manual conversion from Dashboard"
                 );
 
-                let _ = job_mgr_for_manual.submit(src_path, src_fmt, target_fmt, custom_out);
+                if let Ok(job_id) = job_mgr_for_manual.submit(src_path, src_fmt, target_fmt, custom_out) {
+                    *active_id_for_manual.lock().unwrap() = Some(job_id);
+                }
+            }
+        });
+    }
+
+    {
+        let job_mgr_for_cancel = job_manager.clone();
+        let active_id_for_cancel = active_conversion_id.clone();
+        let m_weak = main_window.as_weak();
+        main_window.on_cancel_conversion(move || {
+            info!("Conversion cancellation requested from UI");
+            if let Some(id) = *active_id_for_cancel.lock().unwrap() {
+                job_mgr_for_cancel.cancel(id);
+            }
+            job_mgr_for_cancel.cancel_all();
+            if let Some(m) = m_weak.upgrade() {
+                m.set_is_converting(false);
+                m.set_convert_status_msg("Conversion cancelled".into());
+            }
+        });
+    }
+
+    {
+        let job_mgr_for_retry = job_manager.clone();
+        let active_id_for_retry = active_conversion_id.clone();
+        let m_weak = main_window.as_weak();
+        main_window.on_retry_conversion(move |hist_id| {
+            info!(hist_id, "Conversion retry requested from History UI");
+            match job_mgr_for_retry.retry(hist_id as u64) {
+                Ok(new_id) => {
+                    *active_id_for_retry.lock().unwrap() = Some(new_id);
+                    if let Some(m) = m_weak.upgrade() {
+                        m.set_is_converting(true);
+                        m.set_convert_progress(0.0);
+                        m.set_convert_status_msg("Retrying conversion ... 0%".into());
+                    }
+                }
+                Err(err) => {
+                    warn!("Failed to retry job #{}: {}", hist_id, err);
+                }
             }
         });
     }
@@ -975,6 +1048,7 @@ fn main() {
         let interaction_for_click = interaction.clone();
         let job_mgr_for_click = job_manager.clone();
         let config_for_click = config.clone();
+        let active_id_for_click = active_conversion_id.clone();
         wheel.on_sector_selected(move |idx, is_outer| {
             let mut data = interaction_for_click.lock().unwrap();
             if data.is_preview {
@@ -1005,7 +1079,9 @@ fn main() {
                 if let Some(w) = wheel_for_click.upgrade() {
                     w.set_status_text("Converting ... 0%".into());
                 }
-                let _ = job_mgr_for_click.submit(src_path.clone(), src_fmt, target_fmt, custom_out);
+                if let Ok(job_id) = job_mgr_for_click.submit(src_path.clone(), src_fmt, target_fmt, custom_out) {
+                    *active_id_for_click.lock().unwrap() = Some(job_id);
+                }
                 data.state = AppState::Converting;
             }
         });
@@ -1028,6 +1104,7 @@ fn main() {
 
     let timer = slint::Timer::default();
     let interaction_clone = interaction.clone();
+    let active_id_for_loop = active_conversion_id.clone();
 
     timer.start(
         slint::TimerMode::Repeated,
@@ -1077,7 +1154,10 @@ fn main() {
                                 (&report.resolved_item_path, report.detected_format)
                             {
                                 let (inner_fmts, outer_fmts) =
-                                    registry_clone.get_default_and_expanded_targets(src_fmt);
+                                    registry_clone.get_default_and_expanded_targets_for_file(
+                                        src_fmt,
+                                        Some(item_path.as_path()),
+                                    );
                                 if inner_fmts.is_empty() {
                                     warn!(
                                         format = %src_fmt,
@@ -1178,12 +1258,14 @@ fn main() {
                                             w.set_status_text("Converting ... 0%".into());
                                         }
 
-                                        let _ = job_mgr_clone.submit(
+                                        if let Ok(job_id) = job_mgr_clone.submit(
                                             src_path.clone(),
                                             src_fmt,
                                             target_fmt,
                                             custom_out,
-                                        );
+                                        ) {
+                                            *active_id_for_loop.lock().unwrap() = Some(job_id);
+                                        }
 
                                         data.state = AppState::Converting;
                                         continue;

@@ -2,6 +2,7 @@ use crate::formats::{FileFormat, FormatCategory};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -24,6 +25,21 @@ pub struct ConversionOptions {
     pub background_color: (u8, u8, u8),
     /// Target icon sizes when generating ICO. Default is [16, 32, 48, 64, 128, 256].
     pub ico_sizes: Vec<u32>,
+
+    // Video & Audio Transcoding Options
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub video_crf: Option<u32>,
+    pub video_bitrate: Option<String>,
+    pub audio_bitrate: Option<String>,
+    pub resolution: Option<String>,
+    pub frame_rate: Option<f32>,
+    pub hardware_accel: Option<String>,
+    pub stream_copy: bool,
+    pub preserve_metadata: bool,
+    pub preserve_subtitles: bool,
+    #[serde(skip)]
+    pub cancel_flag: Option<Arc<AtomicBool>>,
 }
 
 impl Default for ConversionOptions {
@@ -37,6 +53,18 @@ impl Default for ConversionOptions {
             svg_target_height: None,
             background_color: (255, 255, 255),
             ico_sizes: vec![16, 32, 48, 64, 128, 256],
+            video_codec: None,
+            audio_codec: None,
+            video_crf: None,
+            video_bitrate: None,
+            audio_bitrate: None,
+            resolution: None,
+            frame_rate: None,
+            hardware_accel: None,
+            stream_copy: false,
+            preserve_metadata: true,
+            preserve_subtitles: true,
+            cancel_flag: None,
         }
     }
 }
@@ -201,6 +229,18 @@ impl ConversionRegistry {
             FileFormat::Mkv,
             FileFormat::Avi,
             FileFormat::Webm,
+            FileFormat::Wmv,
+            FileFormat::Asf,
+            FileFormat::Flv,
+            FileFormat::Mpeg,
+            FileFormat::M4v,
+            FileFormat::Ts,
+            FileFormat::Mts,
+            FileFormat::Vob,
+            FileFormat::Mxf,
+            FileFormat::ThreeGp,
+            FileFormat::ThreeG2,
+            FileFormat::Ogv,
             // Audio
             FileFormat::Mp3,
             FileFormat::Wav,
@@ -208,6 +248,7 @@ impl ConversionRegistry {
             FileFormat::Aac,
             FileFormat::M4a,
             FileFormat::Ogg,
+            FileFormat::Opus,
             // Spreadsheets & Data
             FileFormat::Csv,
             FileFormat::Xlsx,
@@ -221,69 +262,118 @@ impl ConversionRegistry {
         ]
     }
 
-    /// Retrieve all available target formats for a given source format, sorted by relevance.
-    pub fn get_available_targets(&self, source: FileFormat) -> Vec<FileFormat> {
+    /// Retrieve all available target formats for a given source format and optional file path,
+    /// inspecting streams via ffprobe to exclude audio extraction if no audio stream exists.
+    pub fn get_available_targets_for_file(
+        &self,
+        source: FileFormat,
+        path: Option<&Path>,
+    ) -> Vec<FileFormat> {
         let mut targets: Vec<FileFormat> = self
             .routes
             .get(&source)
             .map(|set| set.iter().copied().collect())
             .unwrap_or_default();
 
-        targets.sort_by_key(|fmt| match fmt {
-            FileFormat::Png => 1,
-            FileFormat::Jpg => 2,
-            FileFormat::Webp => 3,
-            FileFormat::Ico => 4,
-            FileFormat::Bmp => 5,
-            FileFormat::Tiff => 6,
-            FileFormat::Gif => 7,
-            FileFormat::Tga => 8,
-            FileFormat::Ppm => 9,
-            FileFormat::Avif => 10,
-            FileFormat::Heic => 11,
-            FileFormat::Jxl => 12,
-            FileFormat::Svg => 13,
-            FileFormat::Pdf => 14,
-            FileFormat::Mp3 => 20,
-            FileFormat::Wav => 21,
-            FileFormat::Flac => 22,
-            FileFormat::Aac => 23,
-            FileFormat::M4a => 24,
-            FileFormat::Ogg => 25,
-            FileFormat::Mp4 => 30,
-            FileFormat::Webm => 31,
-            FileFormat::Mov => 32,
-            FileFormat::Mkv => 33,
-            FileFormat::Avi => 34,
-            FileFormat::Json => 40,
-            FileFormat::Csv => 41,
-            FileFormat::Xlsx => 42,
-            FileFormat::Tsv => 43,
-            FileFormat::Docx => 50,
-            FileFormat::Txt => 51,
-            FileFormat::Html => 52,
-            _ => 100,
-        });
+        // If source is a video file, check if it contains audio
+        if source.is_video() {
+            if let Some(p) = path {
+                if let Some(info) = crate::probe::probe_media(p) {
+                    if !info.has_audio {
+                        // Source video has no audio track, so audio extraction is invalid
+                        targets.retain(|fmt| !fmt.is_audio());
+                    }
+                }
+            }
+        }
+
+        // Prioritize destinations depending on source type
+        if source.is_video() {
+            targets.sort_by_key(|fmt| match fmt {
+                FileFormat::Mp4 => 1,
+                FileFormat::Webm => 2,
+                FileFormat::Mkv => 3,
+                FileFormat::Mp3 => 4, // Audio extraction prioritized
+                FileFormat::Gif => 5, // Animated GIF
+                FileFormat::Mov => 6,
+                FileFormat::Avi => 7,
+                FileFormat::Webp => 8,
+                FileFormat::Wmv => 9,
+                FileFormat::Ts => 10,
+                FileFormat::M4v => 11,
+                FileFormat::Mpeg => 12,
+                FileFormat::Flv => 13,
+                FileFormat::Wav => 20,
+                FileFormat::Flac => 21,
+                FileFormat::Aac => 22,
+                FileFormat::M4a => 23,
+                FileFormat::Ogg => 24,
+                FileFormat::Opus => 25,
+                _ => 100,
+            });
+        } else if source.is_audio() {
+            targets.sort_by_key(|fmt| match fmt {
+                FileFormat::Mp3 => 1,
+                FileFormat::Wav => 2,
+                FileFormat::Flac => 3,
+                FileFormat::Aac => 4,
+                FileFormat::Ogg => 5,
+                FileFormat::M4a => 6,
+                FileFormat::Opus => 7,
+                _ => 100,
+            });
+        } else {
+            targets.sort_by_key(|fmt| match fmt {
+                FileFormat::Png => 1,
+                FileFormat::Jpg => 2,
+                FileFormat::Webp => 3,
+                FileFormat::Ico => 4,
+                FileFormat::Bmp => 5,
+                FileFormat::Tiff => 6,
+                FileFormat::Gif => 7,
+                FileFormat::Tga => 8,
+                FileFormat::Ppm => 9,
+                FileFormat::Avif => 10,
+                FileFormat::Heic => 11,
+                FileFormat::Jxl => 12,
+                FileFormat::Svg => 13,
+                FileFormat::Pdf => 14,
+                _ => 100,
+            });
+        }
 
         targets
     }
 
+    /// Retrieve all available target formats for a given source format, sorted by relevance.
+    pub fn get_available_targets(&self, source: FileFormat) -> Vec<FileFormat> {
+        self.get_available_targets_for_file(source, None)
+    }
+
     /// Splits available targets into:
-    /// - Default inner wheel (up to 6 formats; or 5 formats + a placeholder for More when > 6)
+    /// - Default inner wheel (up to 5 formats + More if > 6; or up to 6 formats if <= 6)
     /// - Expanded outer wheel (the remaining formats)
-    pub fn get_default_and_expanded_targets(
+    pub fn get_default_and_expanded_targets_for_file(
         &self,
         source: FileFormat,
+        path: Option<&Path>,
     ) -> (Vec<FileFormat>, Vec<FileFormat>) {
-        let all_targets = self.get_available_targets(source);
+        let all_targets = self.get_available_targets_for_file(source, path);
         if all_targets.len() <= 6 {
             (all_targets, Vec::new())
         } else {
-            // First 5 in inner wheel, remaining in outer ring
             let inner = all_targets[..5].to_vec();
             let outer = all_targets[5..].to_vec();
             (inner, outer)
         }
+    }
+
+    /// Splits available targets into default inner wheel and expanded outer wheel without file context.
+    pub fn get_default_and_expanded_targets(
+        &self,
+        source: FileFormat,
+    ) -> (Vec<FileFormat>, Vec<FileFormat>) {
+        self.get_default_and_expanded_targets_for_file(source, None)
     }
 
     /// Find an active converter that supports transforming `source` to `target`.

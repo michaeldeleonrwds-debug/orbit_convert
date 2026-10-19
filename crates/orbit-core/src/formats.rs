@@ -101,6 +101,18 @@ pub enum FileFormat {
     Mkv,
     Avi,
     Webm,
+    Wmv,
+    Asf,
+    Flv,
+    Mpeg,
+    M4v,
+    Ts,
+    Mts,
+    Vob,
+    Mxf,
+    ThreeGp,
+    ThreeG2,
+    Ogv,
 
     // Audio
     Mp3,
@@ -109,6 +121,7 @@ pub enum FileFormat {
     Aac,
     M4a,
     Ogg,
+    Opus,
 
     // Spreadsheets & Data
     Csv,
@@ -188,11 +201,23 @@ impl FileFormat {
             "odd" => Some(FileFormat::Odd),
 
             // Video
-            "mp4" | "m4v" => Some(FileFormat::Mp4),
-            "mov" => Some(FileFormat::Mov),
+            "mp4" => Some(FileFormat::Mp4),
+            "m4v" => Some(FileFormat::M4v),
+            "mov" | "qt" => Some(FileFormat::Mov),
             "mkv" => Some(FileFormat::Mkv),
             "avi" => Some(FileFormat::Avi),
             "webm" => Some(FileFormat::Webm),
+            "wmv" => Some(FileFormat::Wmv),
+            "asf" => Some(FileFormat::Asf),
+            "flv" | "f4v" => Some(FileFormat::Flv),
+            "mpg" | "mpeg" | "mpe" | "m2v" => Some(FileFormat::Mpeg),
+            "ts" => Some(FileFormat::Ts),
+            "mts" | "m2ts" => Some(FileFormat::Mts),
+            "vob" => Some(FileFormat::Vob),
+            "mxf" => Some(FileFormat::Mxf),
+            "3gp" | "3gpp" => Some(FileFormat::ThreeGp),
+            "3g2" => Some(FileFormat::ThreeG2),
+            "ogv" => Some(FileFormat::Ogv),
 
             // Audio
             "mp3" => Some(FileFormat::Mp3),
@@ -201,6 +226,7 @@ impl FileFormat {
             "aac" => Some(FileFormat::Aac),
             "m4a" => Some(FileFormat::M4a),
             "ogg" | "oga" => Some(FileFormat::Ogg),
+            "opus" => Some(FileFormat::Opus),
 
             // Spreadsheets & Data
             "csv" => Some(FileFormat::Csv),
@@ -282,6 +308,52 @@ impl FileFormat {
         // PDF: %PDF
         if header.starts_with(b"%PDF") {
             return Some(FileFormat::Pdf);
+        }
+
+        // MP4 / MOV / M4V / 3GP / 3G2: ftyp or moov or wide
+        if header.len() >= 8 {
+            let magic4 = &header[4..8];
+            if magic4 == b"ftyp" || magic4 == b"moov" || magic4 == b"wide" {
+                if header.len() >= 12 && &header[8..12] == b"qt  " {
+                    return Some(FileFormat::Mov);
+                }
+                return Some(FileFormat::Mp4);
+            }
+        }
+
+        // Matroska / WebM: EBML ID 1A 45 DF A3
+        if header.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+            return Some(FileFormat::Mkv);
+        }
+
+        // AVI: RIFF .... AVI 
+        if header.len() >= 12 && header.starts_with(b"RIFF") && &header[8..12] == b"AVI " {
+            return Some(FileFormat::Avi);
+        }
+
+        // Flash Video: FLV
+        if header.starts_with(b"FLV") {
+            return Some(FileFormat::Flv);
+        }
+
+        // ASF / WMV: 30 26 B2 75 8E 66 CF 11
+        if header.starts_with(&[0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11]) {
+            return Some(FileFormat::Wmv);
+        }
+
+        // MPEG-PS (VOB / MPG): 00 00 01 BA
+        if header.starts_with(&[0x00, 0x00, 0x01, 0xBA]) {
+            return Some(FileFormat::Mpeg);
+        }
+
+        // MPEG-TS: Sync byte 0x47
+        if header.starts_with(&[0x47]) {
+            return Some(FileFormat::Ts);
+        }
+
+        // OGG / OGV / OPUS: OggS
+        if header.starts_with(b"OggS") {
+            return Some(FileFormat::Ogg);
         }
 
         None
@@ -373,6 +445,18 @@ impl FileFormat {
             FileFormat::Mkv => "mkv",
             FileFormat::Avi => "avi",
             FileFormat::Webm => "webm",
+            FileFormat::Wmv => "wmv",
+            FileFormat::Asf => "asf",
+            FileFormat::Flv => "flv",
+            FileFormat::Mpeg => "mpg",
+            FileFormat::M4v => "m4v",
+            FileFormat::Ts => "ts",
+            FileFormat::Mts => "mts",
+            FileFormat::Vob => "vob",
+            FileFormat::Mxf => "mxf",
+            FileFormat::ThreeGp => "3gp",
+            FileFormat::ThreeG2 => "3g2",
+            FileFormat::Ogv => "ogv",
 
             FileFormat::Mp3 => "mp3",
             FileFormat::Wav => "wav",
@@ -380,6 +464,7 @@ impl FileFormat {
             FileFormat::Aac => "aac",
             FileFormat::M4a => "m4a",
             FileFormat::Ogg => "ogg",
+            FileFormat::Opus => "opus",
 
             FileFormat::Csv => "csv",
             FileFormat::Xlsx => "xlsx",
@@ -454,6 +539,18 @@ impl FileFormat {
             FileFormat::Mkv => "MKV",
             FileFormat::Avi => "AVI",
             FileFormat::Webm => "WEBM",
+            FileFormat::Wmv => "WMV",
+            FileFormat::Asf => "ASF",
+            FileFormat::Flv => "FLV",
+            FileFormat::Mpeg => "MPEG",
+            FileFormat::M4v => "M4V",
+            FileFormat::Ts => "TS",
+            FileFormat::Mts => "MTS",
+            FileFormat::Vob => "VOB",
+            FileFormat::Mxf => "MXF",
+            FileFormat::ThreeGp => "3GP",
+            FileFormat::ThreeG2 => "3G2",
+            FileFormat::Ogv => "OGV",
 
             FileFormat::Mp3 => "MP3",
             FileFormat::Wav => "WAV",
@@ -461,6 +558,7 @@ impl FileFormat {
             FileFormat::Aac => "AAC",
             FileFormat::M4a => "M4A",
             FileFormat::Ogg => "OGG",
+            FileFormat::Opus => "OPUS",
 
             FileFormat::Csv => "CSV",
             FileFormat::Xlsx => "XLSX",
@@ -532,14 +630,27 @@ impl FileFormat {
             | FileFormat::Mov
             | FileFormat::Mkv
             | FileFormat::Avi
-            | FileFormat::Webm => FormatCategory::Video,
+            | FileFormat::Webm
+            | FileFormat::Wmv
+            | FileFormat::Asf
+            | FileFormat::Flv
+            | FileFormat::Mpeg
+            | FileFormat::M4v
+            | FileFormat::Ts
+            | FileFormat::Mts
+            | FileFormat::Vob
+            | FileFormat::Mxf
+            | FileFormat::ThreeGp
+            | FileFormat::ThreeG2
+            | FileFormat::Ogv => FormatCategory::Video,
 
             FileFormat::Mp3
             | FileFormat::Wav
             | FileFormat::Flac
             | FileFormat::Aac
             | FileFormat::M4a
-            | FileFormat::Ogg => FormatCategory::Audio,
+            | FileFormat::Ogg
+            | FileFormat::Opus => FormatCategory::Audio,
 
             FileFormat::Csv | FileFormat::Xlsx | FileFormat::Tsv => FormatCategory::Spreadsheet,
 

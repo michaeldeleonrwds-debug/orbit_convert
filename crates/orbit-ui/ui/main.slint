@@ -18,6 +18,7 @@ export struct HistoryItem {
     source_ext: string,
     target_ext: string,
     output_path: string,
+    output_size_str: string,
     duration_ms: int,
     is_success: bool,
     status_text: string,
@@ -116,6 +117,8 @@ export component MainWindow inherits Window {
     callback open_all_formats_dialog();
     callback select_target_format_from_picker(string);
     callback format_search_changed(string);
+    callback cancel_conversion();
+    callback retry_conversion(int);
 
     HorizontalLayout {
         // ==================== SIDEBAR ====================
@@ -1143,7 +1146,12 @@ export component MainWindow inherits Window {
                                         clicked => { root.start_manual_conversion(); }
                                     }
 
-                                    if root.convert_last_output != "": AppButton {
+                                    if root.is_converting: DangerButton {
+                                        text: "✕ Cancel";
+                                        clicked => { root.cancel_conversion(); }
+                                    }
+
+                                    if root.convert_last_output != "" && !root.is_converting: AppButton {
                                         text: "Open Converted File";
                                         icon_text: "↗";
                                         is_primary: false;
@@ -1268,6 +1276,13 @@ export component MainWindow inherits Window {
                                             text_color: item.is_success ? #10B981 : #EF4444;
                                         }
                                     }
+                                    if item.output_size_str != "": Text {
+                                        text: "• " + item.output_size_str;
+                                        font_size: 11px;
+                                        font_weight: 600;
+                                        color: #38BDF8;
+                                        vertical_alignment: center;
+                                    }
                                     Text {
                                         text: item.status_text;
                                         font_size: 11px;
@@ -1276,6 +1291,14 @@ export component MainWindow inherits Window {
                                         horizontal-stretch: 1;
                                         vertical_alignment: center;
                                     }
+                                }
+                            }
+
+                            if !item.is_success: VerticalLayout {
+                                alignment: center;
+                                SecondaryButton {
+                                    text: "↻ Retry";
+                                    clicked => { root.retry_conversion(item.id); }
                                 }
                             }
 

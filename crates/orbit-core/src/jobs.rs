@@ -15,7 +15,11 @@ pub type JobId = u64;
 pub enum JobState {
     Pending,
     Processing { progress: f32 },
-    Completed { output_path: PathBuf, duration_ms: u64 },
+    Completed {
+        output_path: PathBuf,
+        duration_ms: u64,
+        output_size_bytes: u64,
+    },
     Failed { error: String },
     Cancelled,
 }
@@ -39,6 +43,8 @@ pub struct JobManager {
     history: Arc<Mutex<Vec<JobRecord>>>,
     sender: crossbeam_channel::Sender<ConversionTask>,
     notification_callback: Mutex<Option<JobNotificationCallback>>,
+    active_cancellations: Arc<Mutex<std::collections::HashMap<JobId, Arc<AtomicBool>>>>,
+    custom_dir_cache: Arc<Mutex<std::collections::HashMap<JobId, Option<PathBuf>>>>,
 }
 
 struct ConversionTask {
@@ -55,6 +61,8 @@ impl JobManager {
     pub fn new(registry: ConversionRegistry, options: ConversionOptions) -> Arc<Self> {
         let (tx, rx) = crossbeam_channel::unbounded::<ConversionTask>();
         let history = Arc::new(Mutex::new(Vec::new()));
+        let active_cancellations = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let custom_dir_cache = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
         let manager = Arc::new(Self {
             registry: registry.clone(),
@@ -63,6 +71,8 @@ impl JobManager {
             history: history.clone(),
             sender: tx,
             notification_callback: Mutex::new(None),
+            active_cancellations: active_cancellations.clone(),
+            custom_dir_cache: custom_dir_cache.clone(),
         });
 
         // Spawn background worker thread
@@ -101,6 +111,39 @@ impl JobManager {
         self.history.lock().unwrap().clone()
     }
 
+    /// Cancel an active or pending conversion job
+    pub fn cancel(&self, id: JobId) -> bool {
+        let guard = self.active_cancellations.lock().unwrap();
+        if let Some(flag) = guard.get(&id) {
+            flag.store(true, Ordering::Relaxed);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel all currently active conversion jobs
+    pub fn cancel_all(&self) {
+        let guard = self.active_cancellations.lock().unwrap();
+        for flag in guard.values() {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Retry a previously failed conversion job
+    pub fn retry(&self, id: JobId) -> Result<JobId, String> {
+        let (src_path, src_fmt, target_fmt, custom_out) = {
+            let hist = self.history.lock().unwrap();
+            let rec = hist.iter().find(|r| r.id == id).ok_or_else(|| {
+                format!("Job #{} not found in history", id)
+            })?;
+            let custom_dir = self.custom_dir_cache.lock().unwrap().get(&id).cloned().flatten();
+            (rec.source_path.clone(), rec.source_format, rec.target_format, custom_dir)
+        };
+
+        self.submit(src_path, src_fmt, target_fmt, custom_out)
+    }
+
     /// Submit a conversion request to the background queue.
     pub fn submit(
         &self,
@@ -111,7 +154,15 @@ impl JobManager {
     ) -> Result<JobId, String> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let cancel_flag = Arc::new(AtomicBool::new(false));
-        let options = self.get_options();
+        let mut options = self.get_options();
+        options.cancel_flag = Some(cancel_flag.clone());
+
+        {
+            let mut c_guard = self.active_cancellations.lock().unwrap();
+            c_guard.insert(id, cancel_flag.clone());
+            let mut dir_guard = self.custom_dir_cache.lock().unwrap();
+            dir_guard.insert(id, custom_output_dir.clone());
+        }
 
         let record = JobRecord {
             id,
@@ -266,10 +317,14 @@ impl JobManager {
                         duration_ms = elapsed,
                         "Conversion completed successfully"
                     );
+                    let size_bytes = std::fs::metadata(&target_path)
+                        .map(|m| m.len())
+                        .unwrap_or(0);
                     self.update_job_state(task.id, |rec| {
                         rec.state = JobState::Completed {
                             output_path: target_path,
                             duration_ms: elapsed,
+                            output_size_bytes: size_bytes,
                         };
                     });
                 }
@@ -283,5 +338,7 @@ impl JobManager {
                 });
             }
         }
+
+        self.active_cancellations.lock().unwrap().remove(&task.id);
     }
 }
