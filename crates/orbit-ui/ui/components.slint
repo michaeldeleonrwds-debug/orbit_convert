@@ -172,3 +172,115 @@ export component Card inherits Rectangle {
     border_radius: 8px;
     vertical-stretch: 0;
 }
+
+export component AppSlider inherits Rectangle {
+    in property <float> minimum: 0.0;
+    in property <float> maximum: 100.0;
+    in-out property <float> value: 50.0;
+    callback changed(float);
+
+    height: 24px;
+    vertical-stretch: 0;
+    background: transparent;
+
+    Rectangle {
+        y: (parent.height - 6px) / 2;
+        height: 6px;
+        width: 100%;
+        background: #1e2638;
+        border-radius: 3px;
+
+        // Active fill in electric blue
+        Rectangle {
+            x: 0;
+            width: Math.max(0px, Math.min(parent.width, parent.width * ((root.value - root.minimum) / Math.max(0.001, root.maximum - root.minimum))));
+            height: 100%;
+            background: #248BFF;
+            border-radius: 3px;
+        }
+    }
+
+    // Thumb handle
+    Rectangle {
+        x: Math.max(0px, Math.min(parent.width - 16px, (parent.width - 16px) * ((root.value - root.minimum) / Math.max(0.001, root.maximum - root.minimum))));
+        y: (parent.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
+        border_radius: 8px;
+        background: #FFFFFF;
+        border-width: 2px;
+        border-color: #248BFF;
+        drop-shadow-blur: 4px;
+        drop-shadow-color: #00000080;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        moved => {
+            if self.pressed {
+                let ratio = Math.max(0.0, Math.min(1.0, self.mouse-x / parent.width));
+                root.value = root.minimum + ratio * (root.maximum - root.minimum);
+                root.changed(root.value);
+            }
+        }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                let ratio = Math.max(0.0, Math.min(1.0, self.mouse-x / parent.width));
+                root.value = root.minimum + ratio * (root.maximum - root.minimum);
+                root.changed(root.value);
+            }
+        }
+    }
+}
+
+export component AppCheckBox inherits Rectangle {
+    in property <string> text: "";
+    in-out property <bool> checked: false;
+    callback toggled(bool);
+
+    height: 26px;
+    vertical-stretch: 0;
+    background: transparent;
+
+    TouchArea {
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+
+        Rectangle {
+            y: (parent.height - 18px) / 2;
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            background: root.checked ? #248BFF : #161D2B;
+            border_width: 1px;
+            border_color: root.checked ? #248BFF : #2A364E;
+
+            animate background { duration: 100ms; }
+
+            if root.checked: Text {
+                text: "✓";
+                font_size: 11px;
+                font_weight: 800;
+                color: #FFFFFF;
+                horizontal_alignment: center;
+                vertical_alignment: center;
+            }
+        }
+
+        Text {
+            text: root.text;
+            font_size: 13px;
+            font_weight: 500;
+            color: #C8CDD7;
+            vertical_alignment: center;
+        }
+    }
+}

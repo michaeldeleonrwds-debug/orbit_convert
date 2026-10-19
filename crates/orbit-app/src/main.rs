@@ -247,7 +247,7 @@ fn main() {
                 }
                 (format!("Failed: {}", error), String::new(), 0)
             }
-            _ => ("In progress".into(), String::new(), 0),
+            _ => return,
         };
 
         let hist_item = HistoryItem {
@@ -647,12 +647,18 @@ fn main() {
         tray::ID_TRAY_DASHBOARD => {
             if let Some(m) = main_weak_for_tray.upgrade() {
                 let _ = m.show();
+                std::thread::spawn(|| {
+                    tray::apply_window_icon();
+                });
             }
         }
         tray::ID_TRAY_SETTINGS => {
             if let Some(m) = main_weak_for_tray.upgrade() {
                 m.set_selected_nav(5);
                 let _ = m.show();
+                std::thread::spawn(|| {
+                    tray::apply_window_icon();
+                });
             }
         }
         tray::ID_TRAY_STATUS => {
@@ -718,6 +724,9 @@ fn main() {
     // Show MainWindow dashboard on startup unless --minimized is specified
     if !args.iter().any(|arg| arg == "--minimized") {
         let _ = main_window.show();
+        std::thread::spawn(|| {
+            tray::apply_window_icon();
+        });
     }
 
     // -------------------------------------------------------------

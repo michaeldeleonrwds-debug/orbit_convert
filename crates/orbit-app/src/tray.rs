@@ -8,10 +8,11 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    GetCursorPos, LoadIconW, PostQuitMessage, RegisterClassW, SetForegroundWindow,
-    TrackPopupMenu, HICON, IDI_APPLICATION, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+    FindWindowW, GetCursorPos, LoadIconW, LoadImageW, PostQuitMessage, RegisterClassW,
+    SendMessageW, SetForegroundWindow, TrackPopupMenu, HICON, ICON_BIG, ICON_SMALL,
+    IDI_APPLICATION, IMAGE_ICON, LR_LOADFROMFILE, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_COMMAND, WM_DESTROY,
-    WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_USER, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+    WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_SETICON, WM_USER, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
 
 pub const WM_TRAYICON: u32 = WM_USER + 100;
@@ -22,6 +23,81 @@ pub const ID_TRAY_SETTINGS: usize = 2003;
 pub const ID_TRAY_OPEN_DIR: usize = 2004;
 pub const ID_TRAY_EXIT: usize = 2005;
 pub const ID_TRAY_DASHBOARD: usize = 2006;
+
+pub fn load_app_icon(size: i32) -> HICON {
+    unsafe {
+        // 1. Try embedded resource ID 1
+        if let Ok(icon) = LoadIconW(Some(HINSTANCE::default()), PCWSTR(1 as _)) {
+            if !icon.0.is_null() {
+                return icon;
+            }
+        }
+
+        // 2. Try loading assets/app_icon.ico from filesystem candidates
+        let candidate_paths = [
+            std::env::current_dir().ok().map(|p| p.join("assets").join("app_icon.ico")),
+            std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.join("assets").join("app_icon.ico"))),
+            std::env::current_exe().ok().and_then(|p| p.parent().and_then(|p| p.parent()).map(|p| p.join("assets").join("app_icon.ico"))),
+            Some(std::path::PathBuf::from(r"C:\Users\REYMARK\Documents\App\Converter\assets\app_icon.ico")),
+        ];
+
+        for opt_path in candidate_paths.into_iter().flatten() {
+            if opt_path.exists() {
+                let wide: Vec<u16> = opt_path.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                if let Ok(handle) = LoadImageW(
+                    None,
+                    PCWSTR(wide.as_ptr()),
+                    IMAGE_ICON,
+                    size,
+                    size,
+                    LR_LOADFROMFILE,
+                ) {
+                    let hicon = HICON(handle.0);
+                    if !hicon.0.is_null() {
+                        return hicon;
+                    }
+                }
+            }
+        }
+
+        LoadIconW(None, IDI_APPLICATION).unwrap_or(HICON::default())
+    }
+}
+
+pub fn apply_window_icon() {
+    unsafe {
+        let title: Vec<u16> = "OrbitConvert — Fast, Powerful File Conversion\0"
+            .encode_utf16()
+            .collect();
+        for _ in 0..15 {
+            let hwnd = FindWindowW(None, PCWSTR(title.as_ptr()));
+            if let Ok(w) = hwnd {
+                if !w.0.is_null() {
+                    let icon_big = load_app_icon(32);
+                    let icon_small = load_app_icon(16);
+                    if !icon_big.0.is_null() {
+                        let _ = SendMessageW(
+                            w,
+                            WM_SETICON,
+                            Some(WPARAM(ICON_BIG as _)),
+                            Some(LPARAM(icon_big.0 as _)),
+                        );
+                    }
+                    if !icon_small.0.is_null() {
+                        let _ = SendMessageW(
+                            w,
+                            WM_SETICON,
+                            Some(WPARAM(ICON_SMALL as _)),
+                            Some(LPARAM(icon_small.0 as _)),
+                        );
+                    }
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+}
 
 pub struct TrayManager {
     hwnd: HWND,
@@ -62,18 +138,7 @@ impl TrayManager {
             )
             .map_err(|e| format!("Failed to create tray window: {}", e))?;
 
-            let h_icon = {
-                let embedded = LoadIconW(Some(HINSTANCE::default()), PCWSTR(1 as _));
-                if let Ok(icon) = embedded {
-                    if !icon.0.is_null() {
-                        icon
-                    } else {
-                        LoadIconW(None, IDI_APPLICATION).unwrap_or(HICON::default())
-                    }
-                } else {
-                    LoadIconW(None, IDI_APPLICATION).unwrap_or(HICON::default())
-                }
-            };
+            let h_icon = load_app_icon(16);
 
             let mut nid = NOTIFYICONDATAW {
                 cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,

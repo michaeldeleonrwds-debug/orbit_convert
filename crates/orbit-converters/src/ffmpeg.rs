@@ -299,9 +299,23 @@ impl Converter for FfmpegConverter {
                 ));
             }
 
+            let clean_err = stderr
+                .lines()
+                .rev()
+                .find(|l| {
+                    let trim = l.trim();
+                    !trim.is_empty()
+                        && !trim.starts_with("frame=")
+                        && !trim.starts_with("out_time")
+                        && !trim.starts_with("progress=")
+                        && !trim.starts_with("bitrate=")
+                        && !trim.starts_with("speed=")
+                })
+                .unwrap_or("Unknown transcoding error");
+
             return Err(ConversionError::ProcessingError(format!(
                 "FFmpeg conversion failed: {}",
-                stderr.lines().last().unwrap_or("Unknown transcoding error")
+                clean_err
             )));
         }
 

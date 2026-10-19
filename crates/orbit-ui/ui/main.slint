@@ -1,7 +1,6 @@
 import { Theme } from "theme.slint";
 import { RadialWheel, WheelSector } from "wheel.slint";
-import { AppButton, SecondaryButton, DangerButton, StatusBadge, Card } from "components.slint";
-import { Slider, CheckBox } from "std-widgets.slint";
+import { AppButton, SecondaryButton, DangerButton, StatusBadge, Card, AppSlider, AppCheckBox } from "components.slint";
 
 export { RadialWheel, WheelSector }
 
@@ -855,7 +854,7 @@ export component MainWindow inherits Window {
                                         alignment: space-between;
                                         Text { text: "JPEG Output Quality: " + root.jpeg_quality + "%"; font_size: 12px; color: #C8CDD7; }
                                     }
-                                    Slider {
+                                    AppSlider {
                                         value: root.jpeg_quality;
                                         minimum: 20;
                                         maximum: 100;
@@ -866,17 +865,17 @@ export component MainWindow inherits Window {
                                         alignment: space-between;
                                         Text { text: "SVG Rasterization Scale: " + Math.round(root.svg_scale * 10.0) / 10.0 + "x"; font_size: 12px; color: #C8CDD7; }
                                     }
-                                    Slider {
+                                    AppSlider {
                                         value: root.svg_scale;
                                         minimum: 0.5;
                                         maximum: 4.0;
                                         changed(val) => { root.svg_scale = val; }
                                     }
 
-                                    CheckBox {
+                                    AppCheckBox {
                                         text: "Show Windows desktop completion notifications";
                                         checked: root.show_notifications;
-                                        toggled => { root.show_notifications = self.checked; }
+                                        toggled(val) => { root.show_notifications = val; }
                                     }
 
                                     AppButton {
@@ -1115,6 +1114,7 @@ export component MainWindow inherits Window {
                             HorizontalLayout {
                                 alignment: center;
                                 spacing: 14px;
+                                horizontal-stretch: 1;
 
                                 Text { text: item.source_name; font_size: 13px; font_weight: 600; color: #FFFFFF; }
                                 StatusBadge {
@@ -1122,7 +1122,13 @@ export component MainWindow inherits Window {
                                     badge_color: item.is_success ? #10B98120 : #EF444420;
                                     text_color: item.is_success ? #10B981 : #EF4444;
                                 }
-                                Text { text: item.status_text; font_size: 11px; color: #8C96A8; }
+                                Text {
+                                    text: item.status_text;
+                                    font_size: 11px;
+                                    color: item.is_success ? #8C96A8 : #EF4444;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
                             }
 
                             if item.output_path != "": SecondaryButton {
@@ -1228,6 +1234,38 @@ export component MainWindow inherits Window {
                         }
                     }
 
+                    // Folder Automation Information Card
+                    Rectangle {
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+                        vertical-stretch: 0;
+
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 12px;
+
+                            Text { text: "AUTOMATED DIRECTORY MONITORING"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                            HorizontalLayout {
+                                spacing: 20px;
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "📁 Instant Explorer Access"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text { text: "Pin high-traffic directories for instant navigation. Files saved to monitored folders are immediately indexed for Alt-wheel conversion."; font_size: 11px; color: #8C96A8; }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "⚡ Rapid Batch Conversion"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text { text: "Right-click or hold Alt in any monitored folder to convert single or multiple files without manually choosing destination directories."; font_size: 11px; color: #8C96A8; }
+                                }
+                            }
+                        }
+                    }
+
                     Rectangle { vertical-stretch: 1; }
                 }
 
@@ -1278,6 +1316,38 @@ export component MainWindow inherits Window {
                         }
                     }
 
+                    // Presets Integration & Quick Tips Card
+                    Rectangle {
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+                        vertical-stretch: 0;
+
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 12px;
+
+                            Text { text: "HOW PRESETS WORK"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                            HorizontalLayout {
+                                spacing: 20px;
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "⚡ One-Click Workflows"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text { text: "Selecting a preset instantly tunes quality, rasterization DPI, background compositing, and target formats across the radial wheel and Convert Studio."; font_size: 11px; color: #8C96A8; }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "◎ Radial Wheel Defaults"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text { text: "When converting from Windows File Explorer via Alt-wheel, active preset profiles ensure your output files match your target specs automatically."; font_size: 11px; color: #8C96A8; }
+                                }
+                            }
+                        }
+                    }
+
                     Rectangle { vertical-stretch: 1; }
                 }
 
@@ -1287,121 +1357,174 @@ export component MainWindow inherits Window {
                     spacing: 20px;
                     alignment: start;
 
+                    HorizontalLayout {
+                        spacing: 20px;
+                        vertical-stretch: 0;
+
+                        // Left Card: Radial Wheel Geometry & Preview
+                        Rectangle {
+                            border_radius: 8px;
+                            background: #141824;
+                            border_width: 1px;
+                            border_color: #1e2638;
+
+                            VerticalLayout {
+                                padding: 22px;
+                                spacing: 16px;
+                                alignment: start;
+
+                                Text { text: "RADIAL WHEEL & ACTIVATION"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                                VerticalLayout {
+                                    spacing: 8px;
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "Wheel Diameter"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                        Text { text: Math.round(root.wheel_diameter) + "px"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                    }
+                                    AppSlider {
+                                        value: root.wheel_diameter;
+                                        minimum: 280;
+                                        maximum: 440;
+                                        changed(val) => { root.wheel_diameter = val; }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 8px;
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "Center Dead Zone Radius"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                        Text { text: Math.round(root.dead_zone) + "px"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                    }
+                                    AppSlider {
+                                        value: root.dead_zone;
+                                        minimum: 40;
+                                        maximum: 100;
+                                        changed(val) => { root.dead_zone = val; }
+                                    }
+                                }
+
+                                Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
+
+                                SecondaryButton {
+                                    text: "Interactive Wheel Preview (Test Without Alt)";
+                                    icon_text: "◎";
+                                    clicked => { root.preview_wheel_clicked(); }
+                                }
+                            }
+                        }
+
+                        // Right Card: Quality Defaults & Scaling
+                        Rectangle {
+                            border_radius: 8px;
+                            background: #141824;
+                            border_width: 1px;
+                            border_color: #1e2638;
+
+                            VerticalLayout {
+                                padding: 22px;
+                                spacing: 16px;
+                                alignment: start;
+
+                                Text { text: "CONVERSION ENGINES & QUALITY"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                                VerticalLayout {
+                                    spacing: 8px;
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "Default JPEG Quality"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                        Text { text: root.jpeg_quality + "%"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                    }
+                                    AppSlider {
+                                        value: root.jpeg_quality;
+                                        minimum: 20;
+                                        maximum: 100;
+                                        changed(val) => { root.jpeg_quality = Math.round(val); }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 8px;
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "SVG Rasterization Scale"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                        Text { text: Math.round(root.svg_scale * 10.0) / 10.0 + "x"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                    }
+                                    AppSlider {
+                                        value: root.svg_scale;
+                                        minimum: 0.5;
+                                        maximum: 4.0;
+                                        changed(val) => { root.svg_scale = val; }
+                                    }
+                                }
+
+                                Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text { text: "FFmpeg Media Engine Status"; font_size: 12px; color: #8C96A8; vertical_alignment: center; }
+                                    StatusBadge {
+                                        text: root.diag_ffmpeg_installed ? "ACTIVE (SYSTEM PATH)" : "MISSING";
+                                        badge_color: root.diag_ffmpeg_installed ? #10B98120 : #EF444420;
+                                        text_color: root.diag_ffmpeg_installed ? #10B981 : #EF4444;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Lower Card: System & Background Integration
                     Rectangle {
                         border_radius: 8px;
                         background: #141824;
                         border_width: 1px;
                         border_color: #1e2638;
+                        vertical-stretch: 0;
 
                         VerticalLayout {
-                            padding: 24px;
-                            spacing: 18px;
+                            padding: 22px;
+                            spacing: 16px;
                             alignment: start;
 
-                            Text { text: "APPLICATION PREFERENCES"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+                            Text { text: "WINDOWS SYSTEM INTEGRATION"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
 
-                            // Radial Wheel Controls
-                            VerticalLayout {
-                                spacing: 10px;
+                            HorizontalLayout {
+                                spacing: 28px;
                                 alignment: start;
-                                vertical-stretch: 0;
 
-                                Text { text: "Radial Wheel Geometry"; font_size: 13px; font_weight: 700; color: #FFFFFF; }
-
-                                HorizontalLayout {
-                                    alignment: space-between;
-                                    Text { text: "Wheel Diameter: " + Math.round(root.wheel_diameter) + "px"; font_size: 12px; color: #C8CDD7; }
-                                }
-                                Slider {
-                                    value: root.wheel_diameter;
-                                    minimum: 280;
-                                    maximum: 440;
-                                    changed(val) => { root.wheel_diameter = val; }
-                                }
-
-                                HorizontalLayout {
-                                    alignment: space-between;
-                                    Text { text: "Center Dead Zone Radius: " + Math.round(root.dead_zone) + "px"; font_size: 12px; color: #C8CDD7; }
-                                }
-                                Slider {
-                                    value: root.dead_zone;
-                                    minimum: 40;
-                                    maximum: 100;
-                                    changed(val) => { root.dead_zone = val; }
-                                }
-
-                                SecondaryButton {
-                                    text: "Preview Radial Wheel (No Alt Required)";
-                                    icon_text: "◎";
-                                    clicked => { root.preview_wheel_clicked(); }
-                                }
-                            }
-
-                            Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
-
-                            // Quality Settings
-                            VerticalLayout {
-                                spacing: 10px;
-                                alignment: start;
-                                vertical-stretch: 0;
-
-                                Text { text: "Output Quality & Scaling"; font_size: 13px; font_weight: 700; color: #FFFFFF; }
-
-                                HorizontalLayout {
-                                    alignment: space-between;
-                                    Text { text: "Default JPEG Quality: " + root.jpeg_quality + "%"; font_size: 12px; color: #C8CDD7; }
-                                }
-                                Slider {
-                                    value: root.jpeg_quality;
-                                    minimum: 20;
-                                    maximum: 100;
-                                    changed(val) => { root.jpeg_quality = Math.round(val); }
-                                }
-
-                                HorizontalLayout {
-                                    alignment: space-between;
-                                    Text { text: "SVG Rasterization Scale: " + Math.round(root.svg_scale * 10.0) / 10.0 + "x"; font_size: 12px; color: #C8CDD7; }
-                                }
-                                Slider {
-                                    value: root.svg_scale;
-                                    minimum: 0.5;
-                                    maximum: 4.0;
-                                    changed(val) => { root.svg_scale = val; }
-                                }
-                            }
-
-                            Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
-
-                            // Checkboxes
-                            VerticalLayout {
-                                spacing: 10px;
-                                alignment: start;
-                                vertical-stretch: 0;
-
-                                CheckBox {
+                                AppCheckBox {
                                     text: "Show Windows desktop completion notifications";
                                     checked: root.show_notifications;
-                                    toggled => { root.show_notifications = self.checked; }
+                                    toggled(val) => { root.show_notifications = val; }
                                 }
 
-                                CheckBox {
-                                    text: "Launch OrbitConvert on Windows startup";
+                                AppCheckBox {
+                                    text: "Launch on Windows startup";
                                     checked: root.launch_on_startup;
-                                    toggled => { root.launch_on_startup = self.checked; }
+                                    toggled(val) => { root.launch_on_startup = val; }
                                 }
 
-                                CheckBox {
+                                AppCheckBox {
                                     text: "Minimize to system tray on close";
                                     checked: root.minimize_to_tray;
-                                    toggled => { root.minimize_to_tray = self.checked; }
+                                    toggled(val) => { root.minimize_to_tray = val; }
                                 }
                             }
+                        }
+                    }
 
-                            AppButton {
-                                text: "Save All Settings";
-                                is_primary: true;
-                                clicked => { root.save_settings_clicked(); }
-                            }
+                    // Save Button Row
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 14px;
+                        vertical-stretch: 0;
+
+                        AppButton {
+                            text: "Save All Preferences";
+                            icon_text: "💾";
+                            is_primary: true;
+                            clicked => { root.save_settings_clicked(); }
                         }
                     }
 
@@ -1535,6 +1658,82 @@ export component MainWindow inherits Window {
                                         alignment: space-between;
                                         Text { text: "Detected Format: " + root.diag_detected_format; font_size: 12px; color: #C8CDD7; vertical_alignment: center; }
                                         StatusBadge { text: root.diag_status; badge_color: #248BFF20; text_color: #38BDF8; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Diagnostic Pipeline Architecture Guide
+                    Rectangle {
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+                        vertical-stretch: 0;
+
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 14px;
+
+                            Text { text: "HOW EXPLORER INTEGRATION OPERATES"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                            HorizontalLayout {
+                                spacing: 14px;
+
+                                Rectangle {
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        padding: 12px;
+                                        spacing: 4px;
+                                        Text { text: "1. Keyboard Hook"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                        Text { text: "Intercepts low-level Alt press without blocking OS message dispatch or shortcuts."; font_size: 11px; color: #8C96A8; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        padding: 12px;
+                                        spacing: 4px;
+                                        Text { text: "2. Window Filter"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                        Text { text: "Verifies cursor or foreground belongs to CabinetWClass or Progman desktop."; font_size: 11px; color: #8C96A8; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        padding: 12px;
+                                        spacing: 4px;
+                                        Text { text: "3. UI Automation & COM"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                        Text { text: "Resolves genuine filesystem path via Shell IShellWindows and UIA element hit-test."; font_size: 11px; color: #8C96A8; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        padding: 12px;
+                                        spacing: 4px;
+                                        Text { text: "4. Donut Radial Wheel"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                        Text { text: "Queries conversion registry and maps annular wedge sectors with dead-zone handling."; font_size: 11px; color: #8C96A8; }
                                     }
                                 }
                             }
