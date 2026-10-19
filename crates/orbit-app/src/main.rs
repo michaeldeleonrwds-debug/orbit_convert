@@ -612,7 +612,7 @@ fn main() {
         let (sectors, _targets) = build_wheel_sectors(
             180.0,
             180.0,
-            120.0,
+            170.0,
             &[
                 FileFormat::Png,
                 FileFormat::Jpg,
@@ -687,7 +687,7 @@ fn main() {
                     FileFormat::Bmp,
                     FileFormat::Gif,
                 ];
-                let (sectors, _) = build_wheel_sectors(180.0, 180.0, 120.0, &demo_targets);
+                let (sectors, _) = build_wheel_sectors(180.0, 180.0, 170.0, &demo_targets);
                 w.set_source_ext("SVG".into());
                 w.set_source_name("sample_vector.svg".into());
                 w.set_sectors(sectors);
@@ -709,6 +709,19 @@ fn main() {
                 data.current_highlighted_index = -1;
                 data.is_preview = true;
             }
+        });
+    }
+
+    {
+        let wheel_for_close = wheel.as_weak();
+        let interaction_for_close = interaction.clone();
+        wheel.on_close_requested(move || {
+            if let Some(w) = wheel_for_close.upgrade() {
+                let _ = w.hide();
+            }
+            let mut data = interaction_for_close.lock().unwrap();
+            data.state = AppState::Idle;
+            data.current_highlighted_index = -1;
         });
     }
 
@@ -789,7 +802,7 @@ fn main() {
 
                                 if let Some(w) = wheel_weak.upgrade() {
                                     let (sectors, _) =
-                                        build_wheel_sectors(180.0, 180.0, 120.0, &targets);
+                                        build_wheel_sectors(180.0, 180.0, 170.0, &targets);
                                     let fname = item_path
                                         .file_name()
                                         .map(|n| n.to_string_lossy().to_string())

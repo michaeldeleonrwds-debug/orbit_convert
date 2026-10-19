@@ -19,7 +19,7 @@ pub fn build_wheel_sectors(
         return (ModelRc::new(VecModel::from(sector_list)), Vec::new());
     }
 
-    let outer_radius = radius; // 170.0 px
+    let outer_radius = if radius >= 140.0 { radius } else { 170.0 }; // 170.0 px outer radius
     let inner_radius = 72.5;   // 145.0 px diameter center hub
 
     let step = 2.0 * std::f32::consts::PI / count as f32;
@@ -27,7 +27,7 @@ pub fn build_wheel_sectors(
     let start_angle = -std::f32::consts::FRAC_PI_2; // Start at 12 o'clock
 
     // Angular gap between wedges in radians
-    let gap = if count <= 3 { 0.015 } else { 0.022 };
+    let gap = if count <= 3 { 0.015 } else { 0.018 };
 
     for (i, &fmt) in formats.iter().enumerate() {
         let center_angle = start_angle + i as f32 * step;

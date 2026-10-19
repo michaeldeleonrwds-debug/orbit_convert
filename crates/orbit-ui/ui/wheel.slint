@@ -48,6 +48,14 @@ export component RadialWheel inherits Window {
 
     // Segmented Donut Wedges
     for sector in root.sectors: Path {
+        x: 0px;
+        y: 0px;
+        width: 360px;
+        height: 360px;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: 360;
+        viewbox-height: 360;
         commands: sector.path_commands;
         fill: root.highlighted_index == sector.index ? #248BFF : #252A33;
         stroke: #141820;
@@ -147,17 +155,21 @@ export component RadialWheel inherits Window {
 
     // Preview Mode Notification Banner
     if root.is_preview: Rectangle {
-        x: 90px;
+        x: 80px;
         y: 326px;
-        width: 180px;
+        width: 200px;
         height: 24px;
         border_radius: 12px;
         background: #1e293b;
         border_width: 1px;
         border_color: #38bdf8;
 
+        TouchArea {
+            clicked => { root.close_requested(); }
+        }
+
         Text {
-            text: "PREVIEW MODE (Esc to close)";
+            text: "PREVIEW MODE (Click or Esc to close)";
             font_size: 9px;
             font_weight: 700;
             color: #38bdf8;
