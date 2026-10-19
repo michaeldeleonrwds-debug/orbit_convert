@@ -224,8 +224,15 @@ impl JobManager {
         let temp_path = temp_guard.path().to_path_buf();
         let cancel_flag = task.cancel_flag.clone();
 
-        let progress_cb = |_p: f32| {
-            // Note: could throttle progress updates if needed
+        let last_reported_pct = std::cell::Cell::new(-1i32);
+        let progress_cb = |p: f32| {
+            let pct = (p * 100.0).round() as i32;
+            if pct != last_reported_pct.get() {
+                last_reported_pct.set(pct);
+                self.update_job_state(task.id, |rec| {
+                    rec.state = JobState::Processing { progress: p };
+                });
+            }
         };
 
         let convert_result = converter.convert(

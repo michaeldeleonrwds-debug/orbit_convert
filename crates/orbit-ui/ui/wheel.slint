@@ -160,7 +160,7 @@ export component RadialWheel inherits Window {
                 vertical_alignment: center;
                 font_size: 10px;
                 font_weight: 500;
-                color: root.highlighted_index >= 0 ? #60A5FA : #8C96A8;
+                color: (root.highlighted_index >= 0 || root.status_text != "Move cursor to format") ? #60A5FA : #8C96A8;
                 overflow: elide;
             }
         }

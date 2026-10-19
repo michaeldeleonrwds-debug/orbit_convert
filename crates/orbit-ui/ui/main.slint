@@ -523,6 +523,58 @@ export component MainWindow inherits Window {
                     spacing: 24px;
                     alignment: start;
 
+                    // Live Conversion Progress Banner
+                    if root.is_converting: Rectangle {
+                        height: 64px;
+                        border_radius: 8px;
+                        background: #141c2e;
+                        border_width: 1px;
+                        border_color: #248BFF;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            alignment: center;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "⚡"; font_size: 14px; vertical_alignment: center; }
+                                    Text {
+                                        text: root.convert_status_msg;
+                                        font_size: 13px;
+                                        font_weight: 700;
+                                        color: #60A5FA;
+                                        vertical_alignment: center;
+                                    }
+                                }
+                                Text {
+                                    text: Math.round(root.convert_progress * 100.0) + "%";
+                                    font_size: 13px;
+                                    font_weight: 800;
+                                    color: #38BDF8;
+                                    vertical_alignment: center;
+                                }
+                            }
+
+                            Rectangle {
+                                height: 5px;
+                                border_radius: 2.5px;
+                                background: #1e293b;
+                                clip: true;
+
+                                Rectangle {
+                                    x: 0;
+                                    width: parent.width * root.convert_progress;
+                                    height: 100%;
+                                    border_radius: 2.5px;
+                                    background: #248BFF;
+                                }
+                            }
+                        }
+                    }
+
                     // Category Cards Grid
                     VerticalLayout {
                         spacing: 12px;
@@ -944,7 +996,7 @@ export component MainWindow inherits Window {
 
                             // Convert Action & Progress
                             VerticalLayout {
-                                spacing: 10px;
+                                spacing: 12px;
                                 alignment: start;
                                 vertical-stretch: 0;
 
@@ -968,10 +1020,43 @@ export component MainWindow inherits Window {
                                     }
                                 }
 
-                                Text {
-                                    text: root.convert_status_msg;
-                                    font_size: 12px;
-                                    color: root.is_converting ? #38BDF8 : #10B981;
+                                VerticalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    width: 100%;
+
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        width: 100%;
+                                        Text {
+                                            text: root.convert_status_msg;
+                                            font_size: 13px;
+                                            font_weight: 600;
+                                            color: root.is_converting ? #38BDF8 : (root.convert_last_output != "" ? #10B981 : #8C96A8);
+                                        }
+                                        if root.is_converting: Text {
+                                            text: Math.round(root.convert_progress * 100.0) + "%";
+                                            font_size: 13px;
+                                            font_weight: 700;
+                                            color: #38BDF8;
+                                        }
+                                    }
+
+                                    if root.is_converting: Rectangle {
+                                        height: 6px;
+                                        width: 100%;
+                                        border_radius: 3px;
+                                        background: #1e293b;
+                                        clip: true;
+
+                                        Rectangle {
+                                            x: 0;
+                                            width: parent.width * root.convert_progress;
+                                            height: 100%;
+                                            border_radius: 3px;
+                                            background: #248BFF;
+                                        }
+                                    }
                                 }
                             }
                         }

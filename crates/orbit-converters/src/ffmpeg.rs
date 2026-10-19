@@ -1,8 +1,15 @@
 use orbit_core::formats::FileFormat;
 use orbit_core::registry::{ConversionError, ConversionOptions, Converter, ProgressReporter};
+use std::io::BufRead;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tracing::{debug, error, info};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub struct FfmpegConverter {
     available: bool,
@@ -24,11 +31,36 @@ impl FfmpegConverter {
     }
 
     pub fn check_ffmpeg_available() -> bool {
-        Command::new("ffmpeg")
-            .arg("-version")
+        let mut cmd = Command::new("ffmpeg");
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.arg("-version")
             .output()
             .map(|out| out.status.success())
             .unwrap_or(false)
+    }
+
+    pub fn get_media_duration_secs(input: &Path) -> Option<f64> {
+        let mut cmd = Command::new("ffprobe");
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.args(&[
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+        ])
+        .arg(input);
+
+        let out = cmd.output().ok()?;
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            s.trim().parse::<f64>().ok()
+        } else {
+            None
+        }
     }
 
     fn is_video(fmt: FileFormat) -> bool {
@@ -118,11 +150,22 @@ impl Converter for FfmpegConverter {
         })?;
 
         if let Some(cb) = progress {
-            cb(0.1);
+            cb(0.05);
         }
 
+        let total_duration_secs = Self::get_media_duration_secs(input);
+        let total_duration_us = total_duration_secs
+            .map(|s| (s * 1_000_000.0) as u64)
+            .unwrap_or(0);
+
         let mut cmd = Command::new("ffmpeg");
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
         cmd.arg("-y") // Overwrite output file
+            .arg("-progress")
+            .arg("pipe:1")
+            .arg("-nostats")
             .arg("-i")
             .arg(input);
 
@@ -198,14 +241,55 @@ impl Converter for FfmpegConverter {
 
         cmd.arg(output);
 
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
         debug!("Executing FFmpeg command: {:?}", cmd);
 
-        let output_res = cmd
-            .output()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| ConversionError::ProcessingError(format!("Failed to spawn ffmpeg: {}", e)))?;
 
-        if !output_res.status.success() {
-            let stderr = String::from_utf8_lossy(&output_res.stderr);
+        // Drain stderr in background thread to prevent pipe buffer deadlock
+        let stderr_pipe = child.stderr.take();
+        let stderr_thread = std::thread::spawn(move || {
+            let mut err_data = Vec::new();
+            if let Some(mut pipe) = stderr_pipe {
+                let _ = std::io::Read::read_to_end(&mut pipe, &mut err_data);
+            }
+            err_data
+        });
+
+        if let Some(stdout_pipe) = child.stdout.take() {
+            let reader = std::io::BufReader::new(stdout_pipe);
+            for line in reader.lines() {
+                if let Ok(l) = line {
+                    if let Some(val) = l.strip_prefix("out_time_us=") {
+                        if let Ok(us) = val.trim().parse::<u64>() {
+                            if total_duration_us > 0 {
+                                let ratio = (us as f64 / total_duration_us as f64).clamp(0.05, 0.98) as f32;
+                                if let Some(cb) = progress {
+                                    cb(ratio);
+                                }
+                            }
+                        }
+                    } else if l.trim() == "progress=end" {
+                        if let Some(cb) = progress {
+                            cb(0.99);
+                        }
+                    }
+                }
+            }
+        }
+
+        let status = child
+            .wait()
+            .map_err(|e| ConversionError::ProcessingError(format!("Failed to wait for ffmpeg: {}", e)))?;
+
+        let stderr_bytes = stderr_thread.join().unwrap_or_default();
+        let stderr = String::from_utf8_lossy(&stderr_bytes);
+
+        if !status.success() {
             error!("FFmpeg execution failed: {}", stderr);
 
             if stderr.contains("does not contain any stream") || stderr.contains("no audio streams")

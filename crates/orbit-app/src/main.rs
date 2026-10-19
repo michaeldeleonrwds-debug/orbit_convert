@@ -30,6 +30,18 @@ use tracing::{debug, error, info, warn};
 enum AppState {
     Idle,
     WheelActive,
+    Converting,
+}
+
+// Wheel interaction state
+struct InteractionData {
+    state: AppState,
+    center_pos: Point,
+    source_path: Option<PathBuf>,
+    source_format: Option<FileFormat>,
+    target_formats: Vec<FileFormat>,
+    current_highlighted_index: i32,
+    is_preview: bool,
 }
 
 fn make_folders_model(folders: &[WatchedFolder]) -> ModelRc<FolderItem> {
@@ -162,12 +174,50 @@ fn main() {
         );
     }
 
-    // Set notification callback for completed/failed jobs
+    let interaction = Arc::new(Mutex::new(InteractionData {
+        state: AppState::Idle,
+        center_pos: Point::new(0.0, 0.0),
+        source_path: None,
+        source_format: None,
+        target_formats: Vec::new(),
+        current_highlighted_index: -1,
+        is_preview: false,
+    }));
+
+    // Set notification callback for completed/failed/in-progress jobs
     let main_window_for_notify = main_window.as_weak();
+    let wheel_for_notify = wheel.as_weak();
     let history_store_for_notify = history_store.clone();
     let config_for_notify = config.clone();
+    let interaction_for_notify = interaction.clone();
 
     job_manager.set_notification_callback(Arc::new(move |record: &JobRecord| {
+        // If conversion is in-progress, update live progress readouts and return early
+        if let JobState::Processing { progress } = record.state {
+            let pct = (progress * 100.0).round() as i32;
+            let status_msg = format!("Converting ... {}%", pct);
+
+            let m_weak = main_window_for_notify.clone();
+            let status_m = status_msg.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(m) = m_weak.upgrade() {
+                    m.set_is_converting(true);
+                    m.set_convert_progress(progress);
+                    m.set_convert_status_msg(status_m.into());
+                }
+            });
+
+            let w_weak = wheel_for_notify.clone();
+            let status_w = status_msg.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(w) = w_weak.upgrade() {
+                    w.set_status_text(status_w.into());
+                }
+            });
+
+            return;
+        }
+
         let show_notifs = config_for_notify.lock().unwrap().show_notifications;
         let is_success = matches!(&record.state, JobState::Completed { .. });
 
@@ -224,18 +274,46 @@ fn main() {
             }
         }
 
-        if let Some(m) = main_window_for_notify.upgrade() {
-            let hist = history_store_for_notify.lock().unwrap().clone();
-            m.set_history(ModelRc::new(VecModel::from(hist)));
-            m.set_is_converting(false);
-            m.set_convert_progress(1.0);
-            m.set_convert_last_output(out_path_str.into());
-            m.set_convert_status_msg(if is_success {
-                "Conversion completed successfully!".into()
-            } else {
-                format!("Error: {}", status_text).into()
+        let m_weak = main_window_for_notify.clone();
+        let hist = history_store_for_notify.lock().unwrap().clone();
+        let status_for_ui = status_text.clone();
+        let out_for_ui = out_path_str.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(m) = m_weak.upgrade() {
+                m.set_history(ModelRc::new(VecModel::from(hist)));
+                m.set_is_converting(false);
+                m.set_convert_progress(1.0);
+                m.set_convert_last_output(out_for_ui.into());
+                m.set_convert_status_msg(if is_success {
+                    "Conversion completed successfully!".into()
+                } else {
+                    format!("Error: {}", status_for_ui).into()
+                });
+            }
+        });
+
+        let w_weak = wheel_for_notify.clone();
+        let target_lbl = record.target_format.display_label().to_string();
+        let interaction_for_done = interaction_for_notify.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(w) = w_weak.upgrade() {
+                if is_success {
+                    w.set_status_text(format!("✓ Converted to {}!", target_lbl).into());
+                } else {
+                    w.set_status_text("Conversion failed".into());
+                }
+            }
+
+            let w_hide = w_weak.clone();
+            slint::Timer::single_shot(Duration::from_millis(800), move || {
+                if let Some(w) = w_hide.upgrade() {
+                    let _ = w.hide();
+                }
+                let mut data = interaction_for_done.lock().unwrap();
+                data.state = AppState::Idle;
+                data.current_highlighted_index = -1;
             });
-        }
+        });
     }));
 
     // Install global low-level keyboard hook
@@ -410,8 +488,8 @@ fn main() {
                 };
 
                 m.set_is_converting(true);
-                m.set_convert_progress(0.25);
-                m.set_convert_status_msg("Processing conversion...".into());
+                m.set_convert_progress(0.0);
+                m.set_convert_status_msg("Converting ... 0%".into());
 
                 let custom_out = {
                     let cfg = config_for_manual.lock().unwrap();
@@ -652,27 +730,6 @@ fn main() {
     let is_enabled_for_loop = tray.is_enabled.clone();
     let config_for_wheel = config.clone();
 
-    // Wheel interaction state
-    struct InteractionData {
-        state: AppState,
-        center_pos: Point,
-        source_path: Option<PathBuf>,
-        source_format: Option<FileFormat>,
-        target_formats: Vec<FileFormat>,
-        current_highlighted_index: i32,
-        is_preview: bool,
-    }
-
-    let interaction = Arc::new(Mutex::new(InteractionData {
-        state: AppState::Idle,
-        center_pos: Point::new(0.0, 0.0),
-        source_path: None,
-        source_format: None,
-        target_formats: Vec::new(),
-        current_highlighted_index: -1,
-        is_preview: false,
-    }));
-
     // MainWindow Preview Wheel callback (accessible from Dashboard & Settings)
     {
         let wheel_for_preview = wheel.as_weak();
@@ -829,10 +886,6 @@ fn main() {
                     RawKeyEvent::AltUp => {
                         let mut data = interaction_clone.lock().unwrap();
                         if data.state == AppState::WheelActive {
-                            if let Some(w) = wheel_weak.upgrade() {
-                                let _ = w.hide();
-                            }
-
                             if !data.is_preview {
                                 let selected_idx = data.current_highlighted_index;
                                 if selected_idx >= 0
@@ -853,25 +906,35 @@ fn main() {
                                             cfg.custom_output_dir.clone()
                                         };
 
+                                        if let Some(w) = wheel_weak.upgrade() {
+                                            w.set_status_text("Converting ... 0%".into());
+                                        }
+
                                         let _ = job_mgr_clone.submit(
                                             src_path.clone(),
                                             src_fmt,
                                             target_fmt,
                                             custom_out,
                                         );
+
+                                        data.state = AppState::Converting;
+                                        continue;
                                     }
                                 } else {
                                     debug!("Alt released in dead zone or outside; conversion cancelled");
                                 }
                             }
 
+                            if let Some(w) = wheel_weak.upgrade() {
+                                let _ = w.hide();
+                            }
                             data.state = AppState::Idle;
                             data.current_highlighted_index = -1;
                         }
                     }
                     RawKeyEvent::EscapeDown | RawKeyEvent::TabDown => {
                         let mut data = interaction_clone.lock().unwrap();
-                        if data.state == AppState::WheelActive {
+                        if data.state == AppState::WheelActive || data.state == AppState::Converting {
                             debug!("Escape or Alt+Tab pressed; cancelling radial wheel");
                             if let Some(w) = wheel_weak.upgrade() {
                                 let _ = w.hide();
