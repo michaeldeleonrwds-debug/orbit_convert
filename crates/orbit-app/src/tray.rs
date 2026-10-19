@@ -3,7 +3,7 @@ use std::sync::Arc;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIIF_ERROR, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+    Shell_NotifyIconW, NIIF_ERROR, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE, NIM_MODIFY,
     NOTIFYICONDATAW, NOTIFY_ICON_DATA_FLAGS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -204,12 +204,66 @@ impl TrayManager {
             let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
         }
     }
+
+    /// Shows a native Windows desktop progress notification without repetitive sound chime.
+    pub fn show_progress_notification(&self, title: &str, message: &str) {
+        unsafe {
+            let mut nid = self.nid;
+            nid.uFlags = NOTIFY_ICON_DATA_FLAGS(0x01 | 0x02 | 0x04 | 0x10); // + NIF_INFO
+
+            let mut info_chars = [0u16; 256];
+            for (i, c) in message.encode_utf16().take(255).enumerate() {
+                info_chars[i] = c;
+            }
+            nid.szInfo = info_chars;
+
+            let mut title_chars = [0u16; 64];
+            for (i, c) in title.encode_utf16().take(63).enumerate() {
+                title_chars[i] = c;
+            }
+            nid.szInfoTitle = title_chars;
+
+            nid.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
+
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+        }
+    }
+
+    /// Updates the hover tooltip text displayed for the tray icon in the Windows taskbar.
+    pub fn update_tooltip(&mut self, tooltip: &str) {
+        unsafe {
+            let mut tip_chars = [0u16; 128];
+            for (i, c) in tooltip.encode_utf16().take(127).enumerate() {
+                tip_chars[i] = c;
+            }
+            self.nid.szTip = tip_chars;
+            let mut nid = self.nid;
+            nid.uFlags = NOTIFY_ICON_DATA_FLAGS(0x04); // NIF_TIP
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+        }
+    }
 }
 
 pub fn send_global_notification(title: &str, message: &str, is_error: bool) {
     unsafe {
         if let Some(tray_ptr) = GLOBAL_TRAY {
             (*tray_ptr).show_notification(title, message, is_error);
+        }
+    }
+}
+
+pub fn send_global_progress_notification(title: &str, message: &str) {
+    unsafe {
+        if let Some(tray_ptr) = GLOBAL_TRAY {
+            (*tray_ptr).show_progress_notification(title, message);
+        }
+    }
+}
+
+pub fn update_global_tooltip(tooltip: &str) {
+    unsafe {
+        if let Some(tray_ptr) = GLOBAL_TRAY {
+            (*tray_ptr).update_tooltip(tooltip);
         }
     }
 }

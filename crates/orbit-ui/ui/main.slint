@@ -494,7 +494,35 @@ export component MainWindow inherits Window {
 
                     HorizontalLayout {
                         alignment: center;
-                        spacing: 10px;
+                        spacing: 12px;
+
+                        if root.is_converting: Rectangle {
+                            height: 36px;
+                            border_radius: 18px;
+                            background: #141f36;
+                            border_width: 1px;
+                            border_color: #248BFF;
+
+                            HorizontalLayout {
+                                padding_left: 14px;
+                                padding_right: 14px;
+                                spacing: 8px;
+                                alignment: center;
+
+                                Text {
+                                    text: "⚡";
+                                    font_size: 13px;
+                                    vertical_alignment: center;
+                                }
+                                Text {
+                                    text: root.convert_status_msg;
+                                    font_size: 12px;
+                                    font_weight: 700;
+                                    color: #60A5FA;
+                                    vertical_alignment: center;
+                                }
+                            }
+                        }
 
                         SecondaryButton {
                             text: "Run Diagnostics";

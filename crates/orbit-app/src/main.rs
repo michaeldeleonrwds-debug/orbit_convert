@@ -23,7 +23,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,8 +191,14 @@ fn main() {
     let config_for_notify = config.clone();
     let interaction_for_notify = interaction.clone();
 
+    // Track live progress notifications per job to throttle desktop popups smoothly
+    let progress_notif_tracker = Arc::new(Mutex::new(std::collections::HashMap::<u64, (i32, Instant)>::new()));
+    let tracker_clone = progress_notif_tracker.clone();
+
     job_manager.set_notification_callback(Arc::new(move |record: &JobRecord| {
-        // If conversion is in-progress, update live progress readouts and return early
+        let show_notifs = config_for_notify.lock().unwrap().show_notifications;
+
+        // If conversion is in-progress, update live progress readouts and send desktop progress notification
         if let JobState::Processing { progress } = record.state {
             let pct = (progress * 100.0).round() as i32;
             let status_msg = format!("Converting ... {}%", pct);
@@ -215,10 +221,56 @@ fn main() {
                 }
             });
 
+            let fname = record
+                .source_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "file".to_string());
+
+            // Always update tray icon tooltip with real-time conversion progress
+            tray::update_global_tooltip(&format!(
+                "OrbitConvert: {} -> {} ({}%)",
+                fname,
+                record.target_format.display_label(),
+                pct
+            ));
+
+            // Show Windows notification with progress updates (throttled cleanly to avoid chime spam)
+            if show_notifs {
+                let mut tracker = tracker_clone.lock().unwrap();
+                let should_notify = match tracker.get(&record.id) {
+                    None => true, // First notification when starting
+                    Some(&(last_pct, last_time)) => {
+                        let elapsed_ms = last_time.elapsed().as_millis();
+                        let delta = pct - last_pct;
+                        // Trigger on key milestones (25%, 50%, 75%, 90%) or at least 1.5s + 15% progress
+                        (last_pct < 25 && pct >= 25)
+                            || (last_pct < 50 && pct >= 50)
+                            || (last_pct < 75 && pct >= 75)
+                            || (last_pct < 90 && pct >= 90)
+                            || (elapsed_ms >= 1500 && delta >= 15)
+                    }
+                };
+
+                if should_notify {
+                    tracker.insert(record.id, (pct, Instant::now()));
+                    let title = format!(
+                        "OrbitConvert: Converting to {} ({}%)",
+                        record.target_format.display_label(),
+                        pct
+                    );
+                    let msg = format!("Converting {} ... {}%", fname, pct);
+                    tray::send_global_progress_notification(&title, &msg);
+                }
+            }
+
             return;
         }
 
-        let show_notifs = config_for_notify.lock().unwrap().show_notifications;
+        // Clean up progress tracker and restore default tray tooltip
+        tracker_clone.lock().unwrap().remove(&record.id);
+        tray::update_global_tooltip("OrbitConvert - Hold Alt to Convert");
+
         let is_success = matches!(&record.state, JobState::Completed { .. });
 
         let (status_text, out_path_str, duration_ms) = match &record.state {
@@ -232,7 +284,7 @@ fn main() {
                     .unwrap_or_default();
                 if show_notifs {
                     let title = format!("OrbitConvert: {} Ready", record.target_format);
-                    let msg = format!("Saved {} in {}ms", fname, duration_ms);
+                    let msg = format!("Saved {} in {}ms (100%)", fname, duration_ms);
                     tray::send_global_notification(&title, &msg, false);
                 }
                 (
