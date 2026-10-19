@@ -1,0 +1,149 @@
+import { Button, CheckBox, Slider, ComboBox, LineEdit } from "std-widgets.slint";
+
+export component SettingsDialog inherits Window {
+    title: "OrbitConvert Settings";
+    width: 440px;
+    height: 480px;
+    background: #14161a;
+
+    in-out property <string> shortcut: "Alt";
+    in-out property <int> jpeg_quality: 90;
+    in-out property <float> svg_scale: 1.0;
+    in-out property <bool> show_notifications: true;
+    in-out property <bool> launch_on_startup: false;
+    in-out property <string> custom_output_dir: "";
+
+    callback save_clicked();
+    callback cancel_clicked();
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+
+        // Header
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                Text {
+                    text: "OrbitConvert Configuration";
+                    font_size: 18px;
+                    font_weight: 700;
+                    color: #f3f4f6;
+                }
+                Text {
+                    text: "Radial conversion and workflow preferences";
+                    font_size: 12px;
+                    color: #9ca3af;
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: #272a30;
+        }
+
+        // Shortcut
+        HorizontalLayout {
+            alignment: space-between;
+            Text {
+                text: "Activation Trigger:";
+                font_size: 13px;
+                vertical_alignment: center;
+                color: #e5e7eb;
+            }
+            Text {
+                text: "Hold Alt (Hover File in Explorer)";
+                font_size: 13px;
+                font_weight: 600;
+                vertical_alignment: center;
+                color: #60a5fa;
+            }
+        }
+
+        // JPEG Quality
+        VerticalLayout {
+            spacing: 4px;
+            HorizontalLayout {
+                alignment: space-between;
+                Text {
+                    text: "JPEG Output Quality:";
+                    font_size: 13px;
+                    color: #e5e7eb;
+                }
+                Text {
+                    text: root.jpeg_quality + "%";
+                    font_size: 13px;
+                    font_weight: 600;
+                    color: #93c5fd;
+                }
+            }
+            Slider {
+                minimum: 50;
+                maximum: 100;
+                value: root.jpeg_quality;
+                changed(val) => { root.jpeg_quality = Math.round(val); }
+            }
+        }
+
+        // SVG Scale
+        VerticalLayout {
+            spacing: 4px;
+            HorizontalLayout {
+                alignment: space-between;
+                Text {
+                    text: "SVG Rasterization Scale:";
+                    font_size: 13px;
+                    color: #e5e7eb;
+                }
+                Text {
+                    text: root.svg_scale + "x";
+                    font_size: 13px;
+                    font_weight: 600;
+                    color: #93c5fd;
+                }
+            }
+            Slider {
+                minimum: 1.0;
+                maximum: 4.0;
+                value: root.svg_scale;
+                changed(val) => { root.svg_scale = Math.round(val * 10) / 10; }
+            }
+        }
+
+        // Notifications Checkbox
+        CheckBox {
+            text: "Show desktop notifications on completion / failure";
+            checked: root.show_notifications;
+            toggled => { root.show_notifications = self.checked; }
+        }
+
+        // Startup Checkbox
+        CheckBox {
+            text: "Launch OrbitConvert on Windows startup";
+            checked: root.launch_on_startup;
+            toggled => { root.launch_on_startup = self.checked; }
+        }
+
+        Rectangle {
+            vertical_stretch: 1;
+        }
+
+        // Buttons
+        HorizontalLayout {
+            alignment: end;
+            spacing: 12px;
+
+            Button {
+                text: "Cancel";
+                clicked => { root.cancel_clicked(); }
+            }
+
+            Button {
+                text: "Save Preferences";
+                primary: true;
+                clicked => { root.save_clicked(); }
+            }
+        }
+    }
+}

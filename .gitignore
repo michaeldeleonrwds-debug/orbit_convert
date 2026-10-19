@@ -1,0 +1,12 @@
+# Rust build artifacts
+/target/
+
+# IDE / Editor artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Windows build artifacts
+*.pdb
+*.ilk

@@ -1,0 +1,183 @@
+import { Theme } from "theme.slint";
+
+export struct WheelSector {
+    label: string,
+    extension: string,
+    color_hex: color,
+    pos_x: length,
+    pos_y: length,
+    angle_deg: float,
+    index: int,
+}
+
+export component RadialWheel inherits Window {
+    title: "OrbitConvert Radial Wheel";
+    no_frame: true;
+    background: transparent;
+    always_on_top: true;
+
+    width: 420px;
+    height: 420px;
+
+    in-out property <string> source_ext: "SVG";
+    in-out property <string> source_name: "brand-logo.svg";
+    in-out property <int> highlighted_index: -1;
+    in-out property <[WheelSector]> sectors: [];
+    in-out property <string> status_text: "Convert to...";
+
+    // Main dark radial wheel surface
+    Rectangle {
+        x: 10px;
+        y: 10px;
+        width: 400px;
+        height: 400px;
+        border_radius: 200px;
+        background: #0d0f16f5;
+        border_width: 1.5px;
+        border_color: root.highlighted_index >= 0 ? #2563eb80 : #1f2430;
+
+        animate border_color {
+            duration: 120ms;
+        }
+
+        // Concentric guideline rings
+        Rectangle {
+            x: 20px;
+            y: 20px;
+            width: 360px;
+            height: 360px;
+            border_radius: 180px;
+            border_width: 1px;
+            border_color: #171a24;
+            background: transparent;
+        }
+
+        Rectangle {
+            x: 60px;
+            y: 60px;
+            width: 280px;
+            height: 280px;
+            border_radius: 140px;
+            border_width: 1px;
+            border_color: #141822;
+            background: transparent;
+        }
+
+        // Render dynamic outer format sectors
+        for sector in root.sectors: Rectangle {
+            x: sector.pos_x - self.width / 2;
+            y: sector.pos_y - self.height / 2;
+            width: 78px;
+            height: 78px;
+            border_radius: 39px;
+
+            // Highlighted state
+            background: root.highlighted_index == sector.index ? #1d263b : #12151e;
+            border_width: root.highlighted_index == sector.index ? 2px : 1.2px;
+            border_color: root.highlighted_index == sector.index ? #3b82f6 : #232733;
+
+            animate background, border_color {
+                duration: 90ms;
+                easing: ease-out;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+
+                // Color-coded format badge icon circle
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border_radius: 18px;
+                    background: root.highlighted_index == sector.index ? sector.color_hex : #1a1e2a;
+                    border_width: 1px;
+                    border_color: sector.color_hex;
+
+                    animate background {
+                        duration: 80ms;
+                    }
+
+                    // Mini format glyph
+                    Text {
+                        text: sector.label;
+                        font_size: 10px;
+                        font_weight: 800;
+                        color: root.highlighted_index == sector.index ? #ffffff : sector.color_hex;
+                        horizontal_alignment: center;
+                        vertical_alignment: center;
+                    }
+                }
+
+                Text {
+                    text: "." + sector.extension;
+                    horizontal_alignment: center;
+                    font_size: 11px;
+                    font_weight: root.highlighted_index == sector.index ? 700 : 500;
+                    color: root.highlighted_index == sector.index ? #ffffff : #94a3b8;
+                }
+            }
+        }
+
+        // Center Hub
+        Rectangle {
+            x: 200px - self.width / 2;
+            y: 200px - self.height / 2;
+            width: 130px;
+            height: 130px;
+            border_radius: 65px;
+            background: #090a0f;
+            border_width: 2px;
+            border_color: root.highlighted_index >= 0 ? #3b82f6 : #242938;
+
+            animate border_color {
+                duration: 120ms;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                padding_left: 8px;
+                padding_right: 8px;
+
+                // Source document icon badge (orange document from mockup)
+                Rectangle {
+                    width: 38px;
+                    height: 38px;
+                    border_radius: 8px;
+                    background: #f97316;
+                    border_width: 1px;
+                    border_color: #ea580c;
+
+                    Text {
+                        text: root.source_ext;
+                        font_size: 12px;
+                        font_weight: 800;
+                        color: #ffffff;
+                        horizontal_alignment: center;
+                        vertical_alignment: center;
+                    }
+                }
+
+                // Source extension title
+                Text {
+                    text: root.source_ext;
+                    horizontal_alignment: center;
+                    font_size: 15px;
+                    font_weight: 700;
+                    color: #ffffff;
+                }
+
+                // Subtitle / hint
+                Text {
+                    text: root.status_text;
+                    horizontal_alignment: center;
+                    font_size: 10px;
+                    font_weight: 500;
+                    color: root.highlighted_index >= 0 ? #60a5fa : #64748b;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
