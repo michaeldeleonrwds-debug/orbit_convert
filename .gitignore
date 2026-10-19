@@ -11,3 +11,6 @@
 *.pdb
 *.ilk
 installer/dist/
+__pycache__/
+*.pyc
+*.pyo

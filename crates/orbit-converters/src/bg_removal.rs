@@ -10,22 +10,55 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Attempts background removal on an image file.
-/// First checks if external AI tool `rembg` is present.
-/// If not, runs a native pure-Rust edge-preserving adaptive alpha-matting algorithm.
+/// Prioritizes the Python AI neural network worker (IS-Net / BiRefNet / u2net with alpha matting).
+/// Falls back to external rembg CLI or pure-Rust adaptive alpha-matting if Python is unavailable.
 pub fn remove_background(input_path: &Path, output_path: &Path) -> Result<PathBuf, String> {
+    remove_background_with_options(input_path, output_path, None, true, None)
+}
+
+/// Runs background removal with model selection, alpha-matting controls, and progress streaming.
+pub fn remove_background_with_options(
+    input_path: &Path,
+    output_path: &Path,
+    model: Option<&str>,
+    alpha_matting: bool,
+    progress_cb: Option<std::sync::Arc<dyn Fn(f32, &str) + Send + Sync>>,
+) -> Result<PathBuf, String> {
     info!(
         input = %input_path.display(),
         output = %output_path.display(),
+        model = ?model,
+        alpha_matting = alpha_matting,
         "Starting background removal"
     );
 
-    // 1. Try external AI tool if available (e.g. rembg CLI)
+    // 1. Try Python AI neural network worker first
+    let py_worker = crate::python_worker::get_python_worker();
+    if py_worker.is_available() {
+        match py_worker.remove_background(input_path, output_path, model, alpha_matting, progress_cb) {
+            Ok(saved) => {
+                info!(
+                    output = %saved.display(),
+                    "Background removal successfully completed via Python AI neural network"
+                );
+                return Ok(saved);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Python AI background removal failed ({}), falling back to external CLI / native matting",
+                    e
+                );
+            }
+        }
+    }
+
+    // 2. Try external AI tool if available (e.g. rembg CLI)
     if try_external_rembg(input_path, output_path) {
         info!("Background removal completed via external rembg tool");
         return Ok(output_path.to_path_buf());
     }
 
-    // 2. Pure Rust native smart matting
+    // 3. Pure Rust native smart matting fallback
     pure_rust_remove_background(input_path, output_path)
 }
 

@@ -6,6 +6,7 @@ pub mod extended;
 pub mod ffmpeg;
 pub mod images;
 pub mod models3d;
+pub mod python_worker;
 pub mod svg;
 
 use orbit_core::registry::ConversionRegistry;

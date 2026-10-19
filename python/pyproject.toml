@@ -1,0 +1,38 @@
+[project]
+name = "orbit-engine"
+version = "0.1.0"
+description = "OrbitConvert Python Processing & AI Engine"
+authors = [
+    { name = "KDN" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "pillow>=10.0",
+    "numpy>=1.24",
+    "onnxruntime>=1.16",
+    "rembg>=2.0.50",
+    "scipy>=1.10",
+    "pymatting>=1.1.8",
+]
+
+[project.optional-dependencies]
+ai = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+]
+office = [
+    "python-docx>=0.8.11",
+    "openpyxl>=3.1",
+    "python-pptx>=0.6.21",
+]
+pdf = [
+    "pymupdf>=1.23",
+]
+media = [
+    "pydub>=0.25.1",
+    "mutagen>=1.47.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

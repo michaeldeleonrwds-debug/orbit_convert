@@ -214,3 +214,43 @@ fn test_background_removal() {
     assert_eq!(center[3], 255, "Center subject should remain fully opaque");
 }
 
+#[test]
+fn test_python_worker_integration() {
+    use orbit_converters::python_worker::get_python_worker;
+
+    let worker = get_python_worker();
+    if !worker.is_available() {
+        println!("Python worker not available in test environment, skipping");
+        return;
+    }
+
+    // 1. Capabilities
+    let caps = worker.get_capabilities().unwrap();
+    assert_eq!(caps["engine"], "OrbitEngine-Python");
+    assert!(caps["quick_actions"]["remove_background"]["available"].as_bool().unwrap_or(false));
+
+    // 2. Dependency status
+    let deps = worker.get_dependency_status().unwrap();
+    assert!(deps["python_packages"]["rembg"]["installed"].as_bool().unwrap_or(false));
+
+    // 3. AI background removal on test image
+    let dir = tempdir().unwrap();
+    let in_path = dir.path().join("ai_test_in.png");
+    let out_path = dir.path().join("ai_test_out.png");
+
+    let mut img = image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255]));
+    for y in 16..48 {
+        for x in 16..48 {
+            img.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+        }
+    }
+    img.save(&in_path).unwrap();
+
+    let saved = orbit_converters::bg_removal::remove_background(&in_path, &out_path).unwrap();
+    assert!(saved.exists());
+    let res = image::open(&saved).unwrap().to_rgba8();
+    assert_eq!(res.width(), 64);
+    assert_eq!(res.height(), 64);
+}
+
+
