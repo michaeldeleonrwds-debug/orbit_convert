@@ -92,8 +92,12 @@ impl TrayManager {
             }
             nid.szTip = tip_chars;
 
-            if !Shell_NotifyIconW(NIM_ADD, &nid).as_bool() {
-                return Err("Failed to register system tray icon".into());
+            let registered = Shell_NotifyIconW(NIM_ADD, &nid).as_bool();
+            if !registered {
+                let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
+                if !Shell_NotifyIconW(NIM_ADD, &nid).as_bool() {
+                    tracing::warn!("Windows system tray notification area not ready; continuing without tray icon");
+                }
             }
 
             let tray = Self {
