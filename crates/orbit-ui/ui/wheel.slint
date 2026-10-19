@@ -11,6 +11,8 @@ export struct WheelSector {
     index: int,
     path_commands: string,
     icon_symbol: string,
+    is_outer: bool,
+    is_more: bool,
 }
 
 export component RadialWheel inherits Window {
@@ -20,55 +22,123 @@ export component RadialWheel inherits Window {
     background: transparent;
     always_on_top: true;
 
-    width: 360px;
-    height: 360px;
+    width: 460px;
+    height: 460px;
 
     in-out property <string> source_ext: "SVG";
     in-out property <string> source_name: "brand-logo.svg";
-    in-out property <int> highlighted_index: -1;
-    in-out property <[WheelSector]> sectors: [];
+    in-out property <int> highlighted_inner_index: -1;
+    in-out property <int> highlighted_outer_index: -1;
+    in-out property <bool> is_expanded: false;
+    in-out property <[WheelSector]> inner_sectors: [];
+    in-out property <[WheelSector]> outer_sectors: [];
     in-out property <string> status_text: "Convert to...";
     in-out property <bool> is_preview: false;
 
-    callback sector_selected(int);
+    callback sector_selected(int, bool); // index, is_outer
     callback close_requested();
+    callback open_all_formats_requested();
 
-    // Wheel surface container (340px diameter, centered at 180, 180)
+    // -------------------------------------------------------------
+    // LEVEL 2: Concentric Outer Ring (Radius 154px - 220px, 440px diameter)
+    // -------------------------------------------------------------
+    if root.is_expanded: Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 460px;
+        height: 460px;
+
+        Rectangle {
+            x: 10px;
+            y: 10px;
+            width: 440px;
+            height: 440px;
+            border_radius: 220px;
+            background: #0d1017;
+            border_width: 1px;
+            border_color: #1e2638;
+        }
+
+        for sector in root.outer_sectors: Path {
+            x: 0px;
+            y: 0px;
+            width: 460px;
+            height: 460px;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 460;
+            viewbox-height: 460;
+            commands: sector.path_commands;
+            fill: root.highlighted_outer_index == sector.index ? #248BFF : #131824;
+            stroke: #0d1017;
+            stroke_width: 1.5px;
+        }
+
+        for sector in root.outer_sectors: Rectangle {
+            x: sector.pos_x - 26px;
+            y: sector.pos_y - 20px;
+            width: 52px;
+            height: 40px;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+
+                Text {
+                    text: sector.icon_symbol;
+                    font_size: 13px;
+                    horizontal_alignment: center;
+                    vertical_alignment: center;
+                }
+
+                Text {
+                    text: sector.label;
+                    font_size: 11px;
+                    font_weight: 700;
+                    color: root.highlighted_outer_index == sector.index ? #FFFFFF : #C8CDD7;
+                    horizontal_alignment: center;
+                    vertical_alignment: center;
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // LEVEL 1: Primary Inner Donut Ring (Radius 75px - 150px, 300px diameter)
+    // -------------------------------------------------------------
     Rectangle {
-        x: 10px;
-        y: 10px;
-        width: 340px;
-        height: 340px;
-        border_radius: 170px;
-        background: #141820;
+        x: 80px;
+        y: 80px;
+        width: 300px;
+        height: 300px;
+        border_radius: 150px;
+        background: #141824;
         border_width: 1.5px;
-        border_color: root.highlighted_index >= 0 ? #248BFF : #2A313E;
+        border_color: (root.highlighted_inner_index >= 0) ? #248BFF : #222b3d;
 
         animate border_color { duration: 120ms; }
     }
 
-    // Segmented Donut Wedges
-    for sector in root.sectors: Path {
+    for sector in root.inner_sectors: Path {
         x: 0px;
         y: 0px;
-        width: 360px;
-        height: 360px;
+        width: 460px;
+        height: 460px;
         viewbox-x: 0;
         viewbox-y: 0;
-        viewbox-width: 360;
-        viewbox-height: 360;
+        viewbox-width: 460;
+        viewbox-height: 460;
         commands: sector.path_commands;
-        fill: root.highlighted_index == sector.index ? #248BFF : #252A33;
-        stroke: #141820;
+        fill: root.highlighted_inner_index == sector.index ? (sector.is_more ? #3B82F6 : #248BFF) : (sector.is_more ? #1e2638 : #181f2c);
+        stroke: #0e121a;
         stroke_width: 2px;
     }
 
-    // Format Icons and Labels centered inside each wedge
-    for sector in root.sectors: Rectangle {
+    for sector in root.inner_sectors: Rectangle {
         x: sector.pos_x - 30px;
-        y: sector.pos_y - 26px;
+        y: sector.pos_y - 24px;
         width: 60px;
-        height: 52px;
+        height: 48px;
 
         VerticalLayout {
             alignment: center;
@@ -85,32 +155,43 @@ export component RadialWheel inherits Window {
                 text: sector.label;
                 font_size: 12px;
                 font_weight: 800;
-                color: root.highlighted_index == sector.index ? #FFFFFF : #C8CDD7;
+                color: root.highlighted_inner_index == sector.index ? #FFFFFF : #C8CDD7;
                 horizontal_alignment: center;
                 vertical_alignment: center;
             }
 
-            Text {
+            if !sector.is_more: Text {
                 text: "." + sector.extension;
                 font_size: 10px;
                 font_weight: 600;
-                color: root.highlighted_index == sector.index ? #FFFFFF : #8C96A8;
+                color: root.highlighted_inner_index == sector.index ? #FFFFFF : #8C96A8;
+                horizontal_alignment: center;
+                vertical_alignment: center;
+            }
+
+            if sector.is_more: Text {
+                text: "Expand";
+                font_size: 9px;
+                font_weight: 600;
+                color: root.highlighted_inner_index == sector.index ? #FFFFFF : #38BDF8;
                 horizontal_alignment: center;
                 vertical_alignment: center;
             }
         }
     }
 
-    // Center Hub (145px diameter, centered at 180, 180)
+    // -------------------------------------------------------------
+    // CENTER HUB (Radius 72.5px, 145px diameter, centered at 230, 230)
+    // -------------------------------------------------------------
     Rectangle {
-        x: 107.5px;
-        y: 107.5px;
+        x: 157.5px;
+        y: 157.5px;
         width: 145px;
         height: 145px;
         border_radius: 72.5px;
-        background: #141820;
+        background: #0e121a;
         border_width: 2px;
-        border_color: root.highlighted_index >= 0 ? #248BFF : #2A313E;
+        border_color: (root.highlighted_inner_index >= 0 || root.highlighted_outer_index >= 0) ? #248BFF : #222b3d;
 
         animate border_color { duration: 120ms; }
 
@@ -120,16 +201,16 @@ export component RadialWheel inherits Window {
             padding_left: 12px;
             padding_right: 12px;
 
-            // Source format badge - 100% Horizontally and Vertically Centered
+            // Source format badge - Centered
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: 44px;
+                    width: 46px;
                     height: 24px;
                     border_radius: 6px;
                     background: #1e2533;
                     border_width: 1px;
-                    border_color: #3b465e;
+                    border_color: #38bdf8;
 
                     Text {
                         text: root.source_ext;
@@ -142,7 +223,7 @@ export component RadialWheel inherits Window {
                 }
             }
 
-            // Source file name - 100% Centered
+            // Source file name - Centered
             Text {
                 text: root.source_name;
                 horizontal_alignment: center;
@@ -153,36 +234,38 @@ export component RadialWheel inherits Window {
                 overflow: elide;
             }
 
-            // Hint / Status text - 100% Centered
+            // Status / Hint readout - Centered
             Text {
                 text: root.status_text;
                 horizontal_alignment: center;
                 vertical_alignment: center;
                 font_size: 10px;
-                font_weight: 500;
-                color: (root.highlighted_index >= 0 || root.status_text != "Move cursor to format") ? #60A5FA : #8C96A8;
+                font_weight: 600;
+                color: (root.highlighted_inner_index >= 0 || root.highlighted_outer_index >= 0 || root.status_text != "Move cursor to format") ? #38BDF8 : #8C96A8;
                 overflow: elide;
             }
         }
     }
 
-    // Preview Mode Notification Banner
+    // -------------------------------------------------------------
+    // Interactive Preview Notification & All Formats Launcher
+    // -------------------------------------------------------------
     if root.is_preview: Rectangle {
-        x: 80px;
-        y: 326px;
-        width: 200px;
-        height: 24px;
-        border_radius: 12px;
+        x: 100px;
+        y: 424px;
+        width: 260px;
+        height: 26px;
+        border_radius: 13px;
         background: #1e293b;
         border_width: 1px;
         border_color: #38bdf8;
 
         TouchArea {
-            clicked => { root.close_requested(); }
+            clicked => { root.open_all_formats_requested(); }
         }
 
         Text {
-            text: "PREVIEW MODE (Click or Esc to close)";
+            text: "🔍 Click to open All Formats Picker (Esc to close)";
             font_size: 9px;
             font_weight: 700;
             color: #38bdf8;

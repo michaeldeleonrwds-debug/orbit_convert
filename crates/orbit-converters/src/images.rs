@@ -99,6 +99,8 @@ impl Converter for ImageConverter {
             FileFormat::Bmp,
             FileFormat::Tiff,
             FileFormat::Gif,
+            FileFormat::Tga,
+            FileFormat::Ppm,
         ];
         from != to && raster_formats.contains(&from) && raster_formats.contains(&to)
     }
@@ -129,6 +131,19 @@ impl Converter for ImageConverter {
             ))
         })?;
 
+        self.convert_dynamic_image(dyn_img, output, target_format, options, progress)
+    }
+}
+
+impl ImageConverter {
+    pub fn convert_dynamic_image(
+        &self,
+        dyn_img: DynamicImage,
+        output: &Path,
+        target_format: FileFormat,
+        options: &ConversionOptions,
+        progress: ProgressReporter<'_>,
+    ) -> Result<(), ConversionError> {
         let file = File::create(output).map_err(|e| ConversionError::IoError(e.to_string()))?;
         let mut writer = BufWriter::new(file);
 
@@ -183,9 +198,19 @@ impl Converter for ImageConverter {
                     .save_with_format(output, ImageFormat::Gif)
                     .map_err(|e| ConversionError::ProcessingError(format!("GIF encoding failed: {}", e)))?;
             }
+            FileFormat::Tga => {
+                dyn_img
+                    .save_with_format(output, ImageFormat::Tga)
+                    .map_err(|e| ConversionError::ProcessingError(format!("TGA encoding failed: {}", e)))?;
+            }
+            FileFormat::Ppm => {
+                dyn_img
+                    .save_with_format(output, ImageFormat::Pnm)
+                    .map_err(|e| ConversionError::ProcessingError(format!("PPM encoding failed: {}", e)))?;
+            }
             other => {
                 return Err(ConversionError::UnsupportedConversion {
-                    from: FileFormat::from_path(input).unwrap_or(FileFormat::Png),
+                    from: FileFormat::Png,
                     to: other,
                 });
             }
@@ -195,7 +220,7 @@ impl Converter for ImageConverter {
             cb(1.0);
         }
 
-        info!("Successfully converted {} to {}", input.display(), output.display());
+        info!("Successfully written converted image to {}", output.display());
         Ok(())
     }
 }

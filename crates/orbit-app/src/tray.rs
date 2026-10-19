@@ -2,9 +2,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIIF_ERROR, NIIF_INFO, NIIF_NOSOUND, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW, NOTIFY_ICON_DATA_FLAGS,
+    Shell_NotifyIconW, NIIF_ERROR, NIIF_LARGE_ICON, NIIF_NOSOUND, NIIF_USER,
+    NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, NOTIFY_ICON_DATA_FLAGS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
@@ -26,8 +27,23 @@ pub const ID_TRAY_DASHBOARD: usize = 2006;
 
 pub fn load_app_icon(size: i32) -> HICON {
     unsafe {
-        // 1. Try embedded resource ID 1
-        if let Ok(icon) = LoadIconW(Some(HINSTANCE::default()), PCWSTR(1 as _)) {
+        // 1. Try embedded resource ID 1 using current module handle
+        let h_module = GetModuleHandleW(None).unwrap_or_default();
+        if let Ok(handle) = LoadImageW(
+            Some(HINSTANCE(h_module.0)),
+            PCWSTR(1 as _),
+            IMAGE_ICON,
+            size,
+            size,
+            Default::default(),
+        ) {
+            let hicon = HICON(handle.0);
+            if !hicon.0.is_null() {
+                return hicon;
+            }
+        }
+
+        if let Ok(icon) = LoadIconW(Some(HINSTANCE(h_module.0)), PCWSTR(1 as _)) {
             if !icon.0.is_null() {
                 return icon;
             }
@@ -199,7 +215,15 @@ impl TrayManager {
             }
             nid.szInfoTitle = title_chars;
 
-            nid.dwInfoFlags = if is_error { NIIF_ERROR } else { NIIF_INFO };
+            let icon = load_app_icon(32);
+            nid.hIcon = icon;
+            nid.hBalloonIcon = icon;
+
+            nid.dwInfoFlags = if is_error {
+                NIIF_ERROR
+            } else {
+                NIIF_USER | NIIF_LARGE_ICON
+            };
 
             let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
         }
@@ -223,7 +247,11 @@ impl TrayManager {
             }
             nid.szInfoTitle = title_chars;
 
-            nid.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
+            let icon = load_app_icon(32);
+            nid.hIcon = icon;
+            nid.hBalloonIcon = icon;
+
+            nid.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON | NIIF_NOSOUND;
 
             let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
         }

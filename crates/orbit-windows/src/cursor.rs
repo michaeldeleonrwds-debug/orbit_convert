@@ -147,6 +147,65 @@ pub fn calculate_selected_sector(
     Some(index.min(num_sectors - 1))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TwoLevelSelection {
+    None,
+    CenterHub,
+    Inner(usize),
+    Outer(usize),
+}
+
+/// Hit-tests cursor position against a two-level concentric radial wheel.
+/// - `dist < hub_radius`: Center hub
+/// - `hub_radius <= dist < inner_outer_radius`: Inner wheel sectors
+/// - `inner_outer_radius <= dist <= outer_max_radius`: Outer wheel sectors (if expanded)
+/// - `dist > outer_max_radius`: Outside wheel (None)
+pub fn calculate_two_level_selection(
+    center: Point,
+    cursor: Point,
+    hub_radius: f32,
+    inner_outer_radius: f32,
+    outer_max_radius: f32,
+    is_expanded: bool,
+    num_inner: usize,
+    num_outer: usize,
+) -> TwoLevelSelection {
+    let dist = center.distance_to(&cursor);
+    if dist < hub_radius {
+        return TwoLevelSelection::CenterHub;
+    }
+
+    let dx = cursor.x - center.x;
+    let dy = cursor.y - center.y;
+    let raw_angle = dy.atan2(dx);
+    let mut angle_from_top = raw_angle + (PI / 2.0);
+    if angle_from_top < 0.0 {
+        angle_from_top += 2.0 * PI;
+    }
+
+    if dist < inner_outer_radius {
+        if num_inner == 0 {
+            return TwoLevelSelection::None;
+        }
+        let sector_angle = 2.0 * PI / (num_inner as f32);
+        let offset_angle = (angle_from_top + (sector_angle / 2.0)) % (2.0 * PI);
+        let index = (offset_angle / sector_angle).floor() as usize;
+        return TwoLevelSelection::Inner(index.min(num_inner - 1));
+    }
+
+    if is_expanded && dist <= outer_max_radius {
+        if num_outer == 0 {
+            return TwoLevelSelection::None;
+        }
+        let sector_angle = 2.0 * PI / (num_outer as f32);
+        let offset_angle = (angle_from_top + (sector_angle / 2.0)) % (2.0 * PI);
+        let index = (offset_angle / sector_angle).floor() as usize;
+        return TwoLevelSelection::Outer(index.min(num_outer - 1));
+    }
+
+    TwoLevelSelection::None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +269,44 @@ mod tests {
         assert_eq!(
             calculate_selected_sector(center, Point::new(100.0, 200.0), dead_zone, max_radius, 4),
             Some(3)
+        );
+    }
+
+    #[test]
+    fn test_two_level_selection() {
+        let center = Point::new(230.0, 230.0);
+        let hub_radius = 75.0;
+        let inner_outer = 150.0;
+        let outer_max = 220.0;
+
+        // Inside center hub
+        assert_eq!(
+            calculate_two_level_selection(center, Point::new(230.0, 240.0), hub_radius, inner_outer, outer_max, true, 6, 8),
+            TwoLevelSelection::CenterHub
+        );
+
+        // In inner ring (North, dist=100 from center -> (230, 130))
+        assert_eq!(
+            calculate_two_level_selection(center, Point::new(230.0, 130.0), hub_radius, inner_outer, outer_max, false, 6, 8),
+            TwoLevelSelection::Inner(0)
+        );
+
+        // In outer ring when NOT expanded (dist=180) -> None
+        assert_eq!(
+            calculate_two_level_selection(center, Point::new(230.0, 50.0), hub_radius, inner_outer, outer_max, false, 6, 8),
+            TwoLevelSelection::None
+        );
+
+        // In outer ring when EXPANDED (North, dist=180 -> (230, 50))
+        assert_eq!(
+            calculate_two_level_selection(center, Point::new(230.0, 50.0), hub_radius, inner_outer, outer_max, true, 6, 8),
+            TwoLevelSelection::Outer(0)
+        );
+
+        // Beyond outer ring (dist=240) -> None
+        assert_eq!(
+            calculate_two_level_selection(center, Point::new(230.0, -20.0), hub_radius, inner_outer, outer_max, true, 6, 8),
+            TwoLevelSelection::None
         );
     }
 }

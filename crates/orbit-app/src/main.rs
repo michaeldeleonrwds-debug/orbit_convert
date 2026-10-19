@@ -8,10 +8,12 @@ use orbit_core::formats::FileFormat;
 use orbit_core::jobs::{JobManager, JobRecord, JobState};
 use orbit_core::registry::{ConversionOptions, ConversionRegistry};
 use orbit_ui::{
-    build_wheel_sectors, FolderItem, HistoryItem, MainWindow, PresetItem, RadialWheel,
+    build_two_level_wheel_sectors, FolderItem, FormatCapabilityItem, HistoryItem, MainWindow,
+    PresetItem, RadialWheel,
 };
 use orbit_windows::cursor::{
-    calculate_clamped_window_pos, calculate_selected_sector, get_current_cursor_pos, Point,
+    calculate_clamped_window_pos, calculate_two_level_selection, get_current_cursor_pos, Point,
+    TwoLevelSelection,
 };
 use orbit_windows::dialogs::{pick_file, pick_folder};
 use orbit_windows::explorer::{ExplorerDiagnosticReport, ExplorerResolver};
@@ -33,14 +35,18 @@ enum AppState {
     Converting,
 }
 
-// Wheel interaction state
+// Wheel interaction state supporting two-level concentric radial menu
 struct InteractionData {
     state: AppState,
     center_pos: Point,
     source_path: Option<PathBuf>,
     source_format: Option<FileFormat>,
-    target_formats: Vec<FileFormat>,
-    current_highlighted_index: i32,
+    inner_targets: Vec<FileFormat>,
+    outer_targets: Vec<FileFormat>,
+    has_more: bool,
+    is_expanded: bool,
+    current_highlighted_inner: i32,
+    current_highlighted_outer: i32,
     is_preview: bool,
 }
 
@@ -68,6 +74,54 @@ fn make_presets_model(presets: &[ConversionPreset]) -> ModelRc<PresetItem> {
             target_format: p.target_format.clone().into(),
             quality: p.quality as i32,
             svg_scale: p.svg_scale,
+        })
+        .collect();
+    ModelRc::new(VecModel::from(items))
+}
+
+fn make_capability_matrix_model(
+    matrix: &[orbit_core::registry::CapabilityInfo],
+    filter_query: &str,
+) -> ModelRc<FormatCapabilityItem> {
+    let clean_query = filter_query.trim().to_lowercase();
+    let items: Vec<FormatCapabilityItem> = matrix
+        .iter()
+        .filter(|cap| {
+            if clean_query.is_empty() {
+                return true;
+            }
+            cap.format.primary_extension().to_lowercase().contains(&clean_query)
+                || cap.format.display_label().to_lowercase().contains(&clean_query)
+                || cap.format.category().to_string().to_lowercase().contains(&clean_query)
+                || cap.engine.to_lowercase().contains(&clean_query)
+        })
+        .map(|cap| {
+            let (status_label, status_color) = match cap.status {
+                orbit_core::registry::DependencyStatus::Builtin => (
+                    "Built-in (Native)",
+                    slint::Color::from_rgb_u8(16, 185, 129),
+                ),
+                orbit_core::registry::DependencyStatus::Active => (
+                    "Active Engine",
+                    slint::Color::from_rgb_u8(56, 189, 248),
+                ),
+                orbit_core::registry::DependencyStatus::Missing => (
+                    "Requires External Engine",
+                    slint::Color::from_rgb_u8(245, 158, 11),
+                ),
+            };
+            FormatCapabilityItem {
+                name: cap.format.display_label().into(),
+                extension: cap.format.primary_extension().into(),
+                category: cap.format.category().to_string().into(),
+                can_decode: cap.can_decode,
+                can_encode: cap.can_encode,
+                engine: cap.engine.into(),
+                status_label: status_label.into(),
+                status_color,
+                tested_status: cap.tested_status.into(),
+                limitations: cap.known_limitations.into(),
+            }
         })
         .collect();
     ModelRc::new(VecModel::from(items))
@@ -172,6 +226,9 @@ fn main() {
         main_window.set_diag_ffmpeg_installed(
             orbit_converters::ffmpeg::FfmpegConverter::check_ffmpeg_available(),
         );
+
+        let cap_matrix = registry.get_capability_matrix();
+        main_window.set_capability_matrix(make_capability_matrix_model(&cap_matrix, ""));
     }
 
     let interaction = Arc::new(Mutex::new(InteractionData {
@@ -179,8 +236,12 @@ fn main() {
         center_pos: Point::new(0.0, 0.0),
         source_path: None,
         source_format: None,
-        target_formats: Vec::new(),
-        current_highlighted_index: -1,
+        inner_targets: Vec::new(),
+        outer_targets: Vec::new(),
+        has_more: false,
+        is_expanded: false,
+        current_highlighted_inner: -1,
+        current_highlighted_outer: -1,
         is_preview: false,
     }));
 
@@ -372,7 +433,9 @@ fn main() {
                 }
                 let mut data = interaction_for_done.lock().unwrap();
                 data.state = AppState::Idle;
-                data.current_highlighted_index = -1;
+                data.current_highlighted_inner = -1;
+                data.current_highlighted_outer = -1;
+                data.is_expanded = false;
             });
         });
     }));
@@ -754,21 +817,25 @@ fn main() {
     // Check CLI test argument: --test-wheel
     if args.iter().any(|arg| arg == "--test-wheel") {
         info!("Running --test-wheel demonstration");
-        let (sectors, _targets) = build_wheel_sectors(
-            180.0,
-            180.0,
-            170.0,
+        let (inner_sec, outer_sec, _, _) = build_two_level_wheel_sectors(
+            230.0,
+            230.0,
             &[
                 FileFormat::Png,
                 FileFormat::Jpg,
                 FileFormat::Webp,
                 FileFormat::Ico,
             ],
+            false,
+            &[],
         );
         wheel.set_source_ext("SVG".into());
         wheel.set_source_name("test_logo.svg".into());
-        wheel.set_sectors(sectors);
-        wheel.set_highlighted_index(0);
+        wheel.set_inner_sectors(inner_sec);
+        wheel.set_outer_sectors(outer_sec);
+        wheel.set_is_expanded(false);
+        wheel.set_highlighted_inner_index(0);
+        wheel.set_highlighted_outer_index(-1);
         wheel.set_status_text("Test wheel mode (auto-closing in 4s)".into());
         wheel.window().set_position(LogicalPosition::new(300.0, 300.0));
         let _ = wheel.show();
@@ -806,35 +873,140 @@ fn main() {
         let interaction_for_preview = interaction.clone();
         main_window.on_preview_wheel_clicked(move || {
             if let Some(w) = wheel_for_preview.upgrade() {
-                let demo_targets = vec![
+                let demo_inner = vec![
                     FileFormat::Png,
                     FileFormat::Jpg,
                     FileFormat::Webp,
                     FileFormat::Ico,
                     FileFormat::Bmp,
-                    FileFormat::Gif,
                 ];
-                let (sectors, _) = build_wheel_sectors(180.0, 180.0, 170.0, &demo_targets);
+                let demo_outer = vec![
+                    FileFormat::Gif,
+                    FileFormat::Tiff,
+                    FileFormat::Tga,
+                    FileFormat::Avif,
+                    FileFormat::Heic,
+                    FileFormat::Jxl,
+                ];
+                let (inner_sec, outer_sec, inner_targets, outer_targets) =
+                    build_two_level_wheel_sectors(230.0, 230.0, &demo_inner, true, &demo_outer);
                 w.set_source_ext("SVG".into());
                 w.set_source_name("sample_vector.svg".into());
-                w.set_sectors(sectors);
-                w.set_highlighted_index(-1);
-                w.set_status_text("Interactive Preview (Move mouse to highlight, Esc to close)".into());
+                w.set_inner_sectors(inner_sec);
+                w.set_outer_sectors(outer_sec);
+                w.set_is_expanded(false);
+                w.set_highlighted_inner_index(-1);
+                w.set_highlighted_outer_index(-1);
+                w.set_status_text("Interactive Preview (Move toward More to expand, Esc to close)".into());
                 w.set_is_preview(true);
 
                 let cur_pos = get_current_cursor_pos().unwrap_or(Point::new(600.0, 400.0));
-                let (wx, wy) = calculate_clamped_window_pos(cur_pos, 360.0, 360.0);
+                let (wx, wy) = calculate_clamped_window_pos(cur_pos, 460.0, 460.0);
                 w.window().set_position(LogicalPosition::new(wx as f32, wy as f32));
                 let _ = w.show();
 
                 let mut data = interaction_for_preview.lock().unwrap();
                 data.state = AppState::WheelActive;
-                data.center_pos = Point::new(wx as f32 + 180.0, wy as f32 + 180.0);
+                data.center_pos = Point::new(wx as f32 + 230.0, wy as f32 + 230.0);
                 data.source_path = None;
                 data.source_format = Some(FileFormat::Svg);
-                data.target_formats = demo_targets;
-                data.current_highlighted_index = -1;
+                data.inner_targets = inner_targets;
+                data.outer_targets = outer_targets;
+                data.has_more = true;
+                data.is_expanded = false;
+                data.current_highlighted_inner = -1;
+                data.current_highlighted_outer = -1;
                 data.is_preview = true;
+            }
+        });
+    }
+
+    // All Formats Dialog handlers
+    {
+        let m_weak = main_window.as_weak();
+        let cap_matrix = registry.get_capability_matrix();
+        main_window.on_open_all_formats_dialog(move || {
+            if let Some(m) = m_weak.upgrade() {
+                m.set_format_search_filter("".into());
+                m.set_capability_matrix(make_capability_matrix_model(&cap_matrix, ""));
+                m.set_show_all_formats_modal(true);
+            }
+        });
+    }
+
+    {
+        let m_weak = main_window.as_weak();
+        let cap_matrix = registry.get_capability_matrix();
+        main_window.on_format_search_changed(move |query| {
+            if let Some(m) = m_weak.upgrade() {
+                m.set_capability_matrix(make_capability_matrix_model(&cap_matrix, query.as_str()));
+            }
+        });
+    }
+
+    {
+        let m_weak = main_window.as_weak();
+        let wheel_weak = wheel.as_weak();
+        let cap_matrix = registry.get_capability_matrix();
+        let interaction_for_all = interaction.clone();
+        wheel.on_open_all_formats_requested(move || {
+            if let Some(w) = wheel_weak.upgrade() {
+                let _ = w.hide();
+            }
+            {
+                let mut data = interaction_for_all.lock().unwrap();
+                data.state = AppState::Idle;
+                data.current_highlighted_inner = -1;
+                data.current_highlighted_outer = -1;
+                data.is_expanded = false;
+            }
+            if let Some(m) = m_weak.upgrade() {
+                let _ = m.show();
+                m.set_selected_nav(1); // Jump to Convert Studio
+                m.set_format_search_filter("".into());
+                m.set_capability_matrix(make_capability_matrix_model(&cap_matrix, ""));
+                m.set_show_all_formats_modal(true);
+            }
+        });
+    }
+
+    {
+        let wheel_for_click = wheel.as_weak();
+        let interaction_for_click = interaction.clone();
+        let job_mgr_for_click = job_manager.clone();
+        let config_for_click = config.clone();
+        wheel.on_sector_selected(move |idx, is_outer| {
+            let mut data = interaction_for_click.lock().unwrap();
+            if data.is_preview {
+                return;
+            }
+            let target_fmt = if is_outer {
+                data.outer_targets.get(idx as usize).copied()
+            } else {
+                if (idx as usize) < data.inner_targets.len() {
+                    data.inner_targets.get(idx as usize).copied()
+                } else {
+                    // Clicked More
+                    data.is_expanded = true;
+                    if let Some(w) = wheel_for_click.upgrade() {
+                        w.set_is_expanded(true);
+                    }
+                    return;
+                }
+            };
+
+            if let (Some(target_fmt), Some(src_path), Some(src_fmt)) =
+                (target_fmt, &data.source_path, data.source_format)
+            {
+                let custom_out = {
+                    let cfg = config_for_click.lock().unwrap();
+                    cfg.custom_output_dir.clone()
+                };
+                if let Some(w) = wheel_for_click.upgrade() {
+                    w.set_status_text("Converting ... 0%".into());
+                }
+                let _ = job_mgr_for_click.submit(src_path.clone(), src_fmt, target_fmt, custom_out);
+                data.state = AppState::Converting;
             }
         });
     }
@@ -848,7 +1020,9 @@ fn main() {
             }
             let mut data = interaction_for_close.lock().unwrap();
             data.state = AppState::Idle;
-            data.current_highlighted_index = -1;
+            data.current_highlighted_inner = -1;
+            data.current_highlighted_outer = -1;
+            data.is_expanded = false;
         });
     }
 
@@ -902,8 +1076,9 @@ fn main() {
                             if let (Some(ref item_path), Some(src_fmt)) =
                                 (&report.resolved_item_path, report.detected_format)
                             {
-                                let targets = registry_clone.get_available_targets(src_fmt);
-                                if targets.is_empty() {
+                                let (inner_fmts, outer_fmts) =
+                                    registry_clone.get_default_and_expanded_targets(src_fmt);
+                                if inner_fmts.is_empty() {
                                     warn!(
                                         format = %src_fmt,
                                         path = %item_path.display(),
@@ -915,36 +1090,49 @@ fn main() {
                                 info!(
                                     file = %item_path.display(),
                                     format = %src_fmt,
-                                    targets = ?targets,
-                                    "File resolved with valid conversion routes. Showing radial wheel."
+                                    inner = ?inner_fmts,
+                                    outer = ?outer_fmts,
+                                    "File resolved with valid conversion routes. Showing two-level radial wheel."
                                 );
 
+                                let has_more = !outer_fmts.is_empty();
+                                let (inner_sec, outer_sec, inner_targets, outer_targets) =
+                                    build_two_level_wheel_sectors(
+                                        230.0, 230.0, &inner_fmts, has_more, &outer_fmts,
+                                    );
+                                let fname = item_path
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+
+                                let (wx, wy) = calculate_clamped_window_pos(
+                                    cursor_pos, 460.0, 460.0,
+                                );
+                                let center_pos = Point::new(wx as f32 + 230.0, wy as f32 + 230.0);
+
                                 data.state = AppState::WheelActive;
-                                data.center_pos = cursor_pos;
+                                data.center_pos = center_pos;
                                 data.source_path = Some(item_path.clone());
                                 data.source_format = Some(src_fmt);
-                                data.target_formats = targets.clone();
-                                data.current_highlighted_index = -1;
+                                data.inner_targets = inner_targets;
+                                data.outer_targets = outer_targets;
+                                data.has_more = has_more;
+                                data.is_expanded = false;
+                                data.current_highlighted_inner = -1;
+                                data.current_highlighted_outer = -1;
                                 data.is_preview = false;
 
                                 if let Some(w) = wheel_weak.upgrade() {
-                                    let (sectors, _) =
-                                        build_wheel_sectors(180.0, 180.0, 170.0, &targets);
-                                    let fname = item_path
-                                        .file_name()
-                                        .map(|n| n.to_string_lossy().to_string())
-                                        .unwrap_or_default();
-
                                     w.set_is_preview(false);
                                     w.set_source_ext(src_fmt.display_label().into());
                                     w.set_source_name(fname.into());
-                                    w.set_sectors(sectors);
-                                    w.set_highlighted_index(-1);
+                                    w.set_inner_sectors(inner_sec);
+                                    w.set_outer_sectors(outer_sec);
+                                    w.set_is_expanded(false);
+                                    w.set_highlighted_inner_index(-1);
+                                    w.set_highlighted_outer_index(-1);
                                     w.set_status_text("Move cursor to format, release Alt to convert".into());
 
-                                    let (wx, wy) = calculate_clamped_window_pos(
-                                        cursor_pos, 360.0, 360.0,
-                                    );
                                     w.window().set_position(LogicalPosition::new(
                                         wx as f32, wy as f32,
                                     ));
@@ -957,11 +1145,21 @@ fn main() {
                         let mut data = interaction_clone.lock().unwrap();
                         if data.state == AppState::WheelActive {
                             if !data.is_preview {
-                                let selected_idx = data.current_highlighted_index;
-                                if selected_idx >= 0
-                                    && (selected_idx as usize) < data.target_formats.len()
-                                {
-                                    let target_fmt = data.target_formats[selected_idx as usize];
+                                let target_fmt: Option<FileFormat> = if data.current_highlighted_outer >= 0 {
+                                    let idx = data.current_highlighted_outer as usize;
+                                    data.outer_targets.get(idx).copied()
+                                } else if data.current_highlighted_inner >= 0 {
+                                    let idx = data.current_highlighted_inner as usize;
+                                    if idx < data.inner_targets.len() {
+                                        data.inner_targets.get(idx).copied()
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                };
+
+                                if let Some(target_fmt) = target_fmt {
                                     if let (Some(src_path), Some(src_fmt)) =
                                         (&data.source_path, data.source_format)
                                     {
@@ -999,7 +1197,9 @@ fn main() {
                                 let _ = w.hide();
                             }
                             data.state = AppState::Idle;
-                            data.current_highlighted_index = -1;
+                            data.current_highlighted_inner = -1;
+                            data.current_highlighted_outer = -1;
+                            data.is_expanded = false;
                         }
                     }
                     RawKeyEvent::EscapeDown | RawKeyEvent::TabDown => {
@@ -1010,7 +1210,9 @@ fn main() {
                                 let _ = w.hide();
                             }
                             data.state = AppState::Idle;
-                            data.current_highlighted_index = -1;
+                            data.current_highlighted_inner = -1;
+                            data.current_highlighted_outer = -1;
+                            data.is_expanded = false;
                         }
                     }
                 }
@@ -1020,26 +1222,88 @@ fn main() {
             let mut data = interaction_clone.lock().unwrap();
             if data.state == AppState::WheelActive {
                 if let Ok(cur_pos) = get_current_cursor_pos() {
-                    let num_sectors = data.target_formats.len();
-                    let selected = calculate_selected_sector(
+                    let total_inner = if data.has_more {
+                        data.inner_targets.len() + 1
+                    } else {
+                        data.inner_targets.len()
+                    };
+                    let total_outer = data.outer_targets.len();
+
+                    let selection = calculate_two_level_selection(
                         data.center_pos,
                         cur_pos,
                         72.5,  // inner dead zone radius (matches center hub radius)
-                        170.0, // outer radius (matches outer ring boundary)
-                        num_sectors,
+                        152.0, // inner donut outer radius (boundary between inner & outer)
+                        220.0, // outer concentric ring max radius
+                        data.is_expanded,
+                        total_inner,
+                        total_outer,
                     );
 
-                    let idx = selected.map(|i| i as i32).unwrap_or(-1);
-                    if idx != data.current_highlighted_index {
-                        data.current_highlighted_index = idx;
+                    // Auto-expansion check:
+                    // If user hovers over the "More" sector (index == data.inner_targets.len()),
+                    // expand the outer ring.
+                    let is_more_sector_hovered = match selection {
+                        TwoLevelSelection::Inner(idx) => data.has_more && idx == data.inner_targets.len(),
+                        _ => false,
+                    };
+
+                    if is_more_sector_hovered && !data.is_expanded {
+                        data.is_expanded = true;
                         if let Some(w) = wheel_weak.upgrade() {
-                            w.set_highlighted_index(idx);
-                            if idx >= 0 && (idx as usize) < data.target_formats.len() {
-                                let target = data.target_formats[idx as usize];
+                            w.set_is_expanded(true);
+                        }
+                    }
+
+                    // Re-calculate selection if just expanded so outer ring is immediately selectable
+                    let selection = if data.is_expanded && matches!(selection, TwoLevelSelection::None) {
+                        calculate_two_level_selection(
+                            data.center_pos,
+                            cur_pos,
+                            72.5,
+                            152.0,
+                            220.0,
+                            true,
+                            total_inner,
+                            total_outer,
+                        )
+                    } else {
+                        selection
+                    };
+
+                    let (new_inner, new_outer) = match selection {
+                        TwoLevelSelection::Inner(idx) => (idx as i32, -1),
+                        TwoLevelSelection::Outer(idx) => (-1, idx as i32),
+                        _ => (-1, -1),
+                    };
+
+                    if new_inner != data.current_highlighted_inner
+                        || new_outer != data.current_highlighted_outer
+                    {
+                        data.current_highlighted_inner = new_inner;
+                        data.current_highlighted_outer = new_outer;
+
+                        if let Some(w) = wheel_weak.upgrade() {
+                            w.set_highlighted_inner_index(new_inner);
+                            w.set_highlighted_outer_index(new_outer);
+
+                            if new_outer >= 0 && (new_outer as usize) < data.outer_targets.len() {
+                                let target = data.outer_targets[new_outer as usize];
                                 w.set_status_text(
                                     format!("Release to convert to {}", target.display_label())
                                         .into(),
                                 );
+                            } else if new_inner >= 0 {
+                                let u_idx = new_inner as usize;
+                                if u_idx < data.inner_targets.len() {
+                                    let target = data.inner_targets[u_idx];
+                                    w.set_status_text(
+                                        format!("Release to convert to {}", target.display_label())
+                                            .into(),
+                                    );
+                                } else if data.has_more && u_idx == data.inner_targets.len() {
+                                    w.set_status_text("More Formats (Move to outer ring)".into());
+                                }
                             } else {
                                 w.set_status_text("Move cursor to format".into());
                             }

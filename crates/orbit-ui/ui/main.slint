@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { RadialWheel, WheelSector } from "wheel.slint";
-import { AppButton, SecondaryButton, DangerButton, StatusBadge, Card, AppSlider, AppCheckBox } from "components.slint";
+import { AppButton, SecondaryButton, DangerButton, StatusBadge, Card, AppSlider, AppCheckBox, SearchInput } from "components.slint";
 
 export { RadialWheel, WheelSector }
 
@@ -30,6 +30,19 @@ export struct PresetItem {
     target_format: string,
     quality: int,
     svg_scale: float,
+}
+
+export struct FormatCapabilityItem {
+    name: string,
+    extension: string,
+    category: string,
+    can_decode: bool,
+    can_encode: bool,
+    engine: string,
+    status_label: string,
+    status_color: color,
+    tested_status: string,
+    limitations: string,
 }
 
 export component MainWindow inherits Window {
@@ -65,10 +78,13 @@ export component MainWindow inherits Window {
     in-out property <string> diag_status: "Ready";
     in-out property <bool> diag_ffmpeg_installed: true;
 
-    // Models
     in-out property <[FolderItem]> folders: [];
     in-out property <[HistoryItem]> history: [];
     in-out property <[PresetItem]> presets: [];
+    in-out property <[FormatCapabilityItem]> capability_matrix: [];
+    in-out property <bool> show_all_formats_modal: false;
+    in-out property <string> format_search_filter: "";
+    in-out property <string> format_active_category: "ALL";
 
     // Manual Convert Page State
     in-out property <string> convert_source_path: "";
@@ -97,6 +113,9 @@ export component MainWindow inherits Window {
     callback choose_custom_output_clicked();
     callback toggle_service_clicked();
     callback preview_wheel_clicked();
+    callback open_all_formats_dialog();
+    callback select_target_format_from_picker(string);
+    callback format_search_changed(string);
 
     HorizontalLayout {
         // ==================== SIDEBAR ====================
@@ -1057,7 +1076,7 @@ export component MainWindow inherits Window {
                                     spacing: 8px;
                                     vertical-stretch: 0;
 
-                                    for fmt in ["PNG", "JPG", "WEBP", "ICO", "MP3", "WAV", "MP4", "CSV", "JSON", "PDF"]: Rectangle {
+                                    for fmt in ["PNG", "JPG", "WEBP", "ICO", "TIFF", "BMP", "GIF", "TGA", "MP3", "WAV", "MP4", "CSV", "PDF"]: Rectangle {
                                         height: 32px;
                                         border_radius: 6px;
                                         background: root.convert_target_fmt == fmt ? #248BFF : #1a202c;
@@ -1067,14 +1086,38 @@ export component MainWindow inherits Window {
                                         TouchArea { clicked => { root.convert_target_fmt = fmt; root.select_target_format(fmt); } }
 
                                         HorizontalLayout {
-                                            padding_left: 12px;
-                                            padding_right: 12px;
+                                            padding_left: 10px;
+                                            padding_right: 10px;
                                             alignment: center;
                                             Text {
                                                 text: fmt;
                                                 font_size: 11px;
                                                 font_weight: 700;
                                                 color: root.convert_target_fmt == fmt ? #FFFFFF : #94A3B8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: #1e293b;
+                                        border_width: 1px;
+                                        border_color: #38bdf8;
+
+                                        TouchArea { clicked => { root.show_all_formats_modal = true; root.open_all_formats_dialog(); } }
+
+                                        HorizontalLayout {
+                                            padding_left: 12px;
+                                            padding_right: 12px;
+                                            spacing: 6px;
+                                            alignment: center;
+                                            Text {
+                                                text: "🔍 All Formats (60+)...";
+                                                font_size: 11px;
+                                                font_weight: 700;
+                                                color: #38bdf8;
                                                 vertical_alignment: center;
                                             }
                                         }
@@ -1332,6 +1375,7 @@ export component MainWindow inherits Window {
                                             text: folder.path;
                                             font_size: 11px;
                                             color: #8C96A8;
+                                            overflow: elide;
                                             vertical_alignment: center;
                                         }
                                     }
@@ -1380,15 +1424,17 @@ export component MainWindow inherits Window {
                                 spacing: 20px;
 
                                 VerticalLayout {
+                                    horizontal-stretch: 1;
                                     spacing: 4px;
                                     Text { text: "📁 Instant Explorer Access"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
-                                    Text { text: "Pin high-traffic directories for instant navigation. Files saved to monitored folders are immediately indexed for Alt-wheel conversion."; font_size: 11px; color: #8C96A8; }
+                                    Text { text: "Pin high-traffic directories for instant navigation. Files saved to monitored folders are immediately indexed for Alt-wheel conversion."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                 }
 
                                 VerticalLayout {
+                                    horizontal-stretch: 1;
                                     spacing: 4px;
                                     Text { text: "⚡ Rapid Batch Conversion"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
-                                    Text { text: "Right-click or hold Alt in any monitored folder to convert single or multiple files without manually choosing destination directories."; font_size: 11px; color: #8C96A8; }
+                                    Text { text: "Right-click or hold Alt in any monitored folder to convert single or multiple files without manually choosing destination directories."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                 }
                             }
                         }
@@ -1470,15 +1516,17 @@ export component MainWindow inherits Window {
                                 spacing: 20px;
 
                                 VerticalLayout {
+                                    horizontal-stretch: 1;
                                     spacing: 4px;
                                     Text { text: "⚡ One-Click Workflows"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
-                                    Text { text: "Selecting a preset instantly tunes quality, rasterization DPI, background compositing, and target formats across the radial wheel and Convert Studio."; font_size: 11px; color: #8C96A8; }
+                                    Text { text: "Selecting a preset instantly tunes quality, rasterization DPI, background compositing, and target formats across the radial wheel and Convert Studio."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                 }
 
                                 VerticalLayout {
+                                    horizontal-stretch: 1;
                                     spacing: 4px;
                                     Text { text: "◎ Radial Wheel Defaults"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
-                                    Text { text: "When converting from Windows File Explorer via Alt-wheel, active preset profiles ensure your output files match your target specs automatically."; font_size: 11px; color: #8C96A8; }
+                                    Text { text: "When converting from Windows File Explorer via Alt-wheel, active preset profiles ensure your output files match your target specs automatically."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                 }
                             }
                         }
@@ -1625,8 +1673,8 @@ export component MainWindow inherits Window {
 
                             Text { text: "WINDOWS SYSTEM INTEGRATION"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
 
-                            HorizontalLayout {
-                                spacing: 28px;
+                            VerticalLayout {
+                                spacing: 14px;
                                 alignment: start;
 
                                 AppCheckBox {
@@ -1669,21 +1717,24 @@ export component MainWindow inherits Window {
                                 spacing: 32px;
 
                                 VerticalLayout {
+                                    horizontal-stretch: 1;
                                     spacing: 4px;
                                     Text { text: "Application Version"; font_size: 11px; color: #64748B; }
-                                    Text { text: "OrbitConvert Desktop v0.1.0 (x86_64 Windows)"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text { text: "OrbitConvert Desktop v0.1.0 (x86_64 Windows)"; font_size: 13px; font_weight: 600; color: #FFFFFF; wrap: word-wrap; }
                                 }
 
                                 VerticalLayout {
+                                    horizontal-stretch: 1;
                                     spacing: 4px;
                                     Text { text: "Developer"; font_size: 11px; color: #64748B; }
-                                    Text { text: "Michael De Leon"; font_size: 13px; font_weight: 600; color: #38BDF8; }
+                                    Text { text: "Michael De Leon"; font_size: 13px; font_weight: 600; color: #38BDF8; wrap: word-wrap; }
                                 }
 
                                 VerticalLayout {
+                                    horizontal-stretch: 1;
                                     spacing: 4px;
                                     Text { text: "Software License"; font_size: 11px; color: #64748B; }
-                                    Text { text: "MIT License / Apache-2.0 Dual License"; font_size: 13px; font_weight: 600; color: #10B981; }
+                                    Text { text: "MIT License / Apache-2.0 Dual License"; font_size: 13px; font_weight: 600; color: #10B981; wrap: word-wrap; }
                                 }
                             }
                         }
@@ -1904,6 +1955,7 @@ export component MainWindow inherits Window {
                                 spacing: 14px;
 
                                 Rectangle {
+                                    horizontal-stretch: 1;
                                     border_radius: 6px;
                                     background: #0d1017;
                                     border_width: 1px;
@@ -1913,11 +1965,12 @@ export component MainWindow inherits Window {
                                         padding: 12px;
                                         spacing: 4px;
                                         Text { text: "1. Keyboard Hook"; font_size: 12px; font_weight: 700; color: #38BDF8; }
-                                        Text { text: "Intercepts low-level Alt press without blocking OS message dispatch or shortcuts."; font_size: 11px; color: #8C96A8; }
+                                        Text { text: "Intercepts low-level Alt press without blocking OS message dispatch or shortcuts."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                     }
                                 }
 
                                 Rectangle {
+                                    horizontal-stretch: 1;
                                     border_radius: 6px;
                                     background: #0d1017;
                                     border_width: 1px;
@@ -1927,11 +1980,12 @@ export component MainWindow inherits Window {
                                         padding: 12px;
                                         spacing: 4px;
                                         Text { text: "2. Window Filter"; font_size: 12px; font_weight: 700; color: #38BDF8; }
-                                        Text { text: "Verifies cursor or foreground belongs to CabinetWClass or Progman desktop."; font_size: 11px; color: #8C96A8; }
+                                        Text { text: "Verifies cursor or foreground belongs to CabinetWClass or Progman desktop."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                     }
                                 }
 
                                 Rectangle {
+                                    horizontal-stretch: 1;
                                     border_radius: 6px;
                                     background: #0d1017;
                                     border_width: 1px;
@@ -1941,11 +1995,12 @@ export component MainWindow inherits Window {
                                         padding: 12px;
                                         spacing: 4px;
                                         Text { text: "3. UI Automation & COM"; font_size: 12px; font_weight: 700; color: #38BDF8; }
-                                        Text { text: "Resolves genuine filesystem path via Shell IShellWindows and UIA element hit-test."; font_size: 11px; color: #8C96A8; }
+                                        Text { text: "Resolves genuine filesystem path via Shell IShellWindows and UIA element hit-test."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                     }
                                 }
 
                                 Rectangle {
+                                    horizontal-stretch: 1;
                                     border_radius: 6px;
                                     background: #0d1017;
                                     border_width: 1px;
@@ -1955,7 +2010,7 @@ export component MainWindow inherits Window {
                                         padding: 12px;
                                         spacing: 4px;
                                         Text { text: "4. Donut Radial Wheel"; font_size: 12px; font_weight: 700; color: #38BDF8; }
-                                        Text { text: "Queries conversion registry and maps annular wedge sectors with dead-zone handling."; font_size: 11px; color: #8C96A8; }
+                                        Text { text: "Queries conversion registry and maps annular wedge sectors with dead-zone handling."; font_size: 11px; color: #8C96A8; wrap: word-wrap; }
                                     }
                                 }
                             }
@@ -1963,6 +2018,188 @@ export component MainWindow inherits Window {
                     }
 
                     Rectangle { vertical-stretch: 1; }
+                }
+            }
+        }
+    }
+
+    // ==================== ALL FORMATS PICKER & CAPABILITY MATRIX MODAL ====================
+    if root.show_all_formats_modal: Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #000000C8;
+
+        // Backdrop Dismiss
+        TouchArea {
+            clicked => { root.show_all_formats_modal = false; }
+        }
+
+        // Modal Content Card
+        Rectangle {
+            x: (parent.width - 960px) / 2;
+            y: (parent.height - 620px) / 2;
+            width: 960px;
+            height: 620px;
+            border_radius: 10px;
+            background: #141824;
+            border_width: 1px;
+            border_color: #1e2638;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #000000C0;
+
+            TouchArea { /* Absorb clicks inside dialog */ }
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+
+                // Header
+                HorizontalLayout {
+                    alignment: space-between;
+                    vertical-stretch: 0;
+
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text { text: "FORMAT CAPABILITY & COMPATIBILITY MATRIX"; font_size: 14px; font_weight: 800; color: #FFFFFF; letter_spacing: 0.5px; }
+                        Text { text: "Browse and select from 60+ verified formats, camera RAW profiles, and multimedia pipelines."; font_size: 11px; color: #8C96A8; }
+                    }
+
+                    DangerButton {
+                        text: "✕ Close";
+                        clicked => { root.show_all_formats_modal = false; }
+                    }
+                }
+
+                // Search Bar
+                SearchInput {
+                    text <=> root.format_search_filter;
+                    placeholder: "Search formats by extension, name, category, or engine (e.g. CR2, WebP, AVIF, RAW)...";
+                    changed(query) => { root.format_search_changed(query); }
+                }
+
+                // Table Header
+                Rectangle {
+                    height: 32px;
+                    border_radius: 6px;
+                    background: #0d1017;
+                    border_width: 1px;
+                    border_color: #1a202c;
+                    vertical-stretch: 0;
+
+                    HorizontalLayout {
+                        padding_left: 14px;
+                        padding_right: 14px;
+                        spacing: 12px;
+
+                        Text { text: "FORMAT"; width: 80px; font_size: 10px; font_weight: 700; color: #64748B; vertical_alignment: center; }
+                        Text { text: "CATEGORY"; width: 140px; font_size: 10px; font_weight: 700; color: #64748B; vertical_alignment: center; }
+                        Text { text: "READ / WRITE"; width: 120px; font_size: 10px; font_weight: 700; color: #64748B; vertical_alignment: center; }
+                        Text { text: "CONVERSION ENGINE"; width: 180px; font_size: 10px; font_weight: 700; color: #64748B; vertical_alignment: center; }
+                        Text { text: "STATUS & LIMITATIONS"; horizontal-stretch: 1; font_size: 10px; font_weight: 700; color: #64748B; vertical_alignment: center; }
+                        Text { text: "ACTION"; width: 100px; font_size: 10px; font_weight: 700; color: #64748B; horizontal_alignment: center; vertical_alignment: center; }
+                    }
+                }
+
+                // Scrollable Matrix Table
+                Flickable {
+                    vertical-stretch: 1;
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        for item in root.capability_matrix: Rectangle {
+                            height: 48px;
+                            border_radius: 6px;
+                            background: #0e121c;
+                            border_width: 1px;
+                            border_color: #1a2233;
+
+                            HorizontalLayout {
+                                padding_left: 14px;
+                                padding_right: 14px;
+                                spacing: 12px;
+                                alignment: center;
+
+                                // Format Badge
+                                HorizontalLayout {
+                                    width: 80px;
+                                    alignment: start;
+                                    Rectangle {
+                                        width: 58px;
+                                        height: 24px;
+                                        border_radius: 4px;
+                                        background: #1e2638;
+                                        Text { text: "." + item.extension; font_size: 11px; font_weight: 800; color: #FFFFFF; horizontal_alignment: center; vertical_alignment: center; }
+                                    }
+                                }
+
+                                // Category
+                                Text { text: item.category; width: 140px; font_size: 11px; font_weight: 600; color: #94A3B8; vertical_alignment: center; }
+
+                                // Read / Write Badges
+                                HorizontalLayout {
+                                    width: 120px;
+                                    spacing: 6px;
+                                    alignment: start;
+                                    Rectangle {
+                                        width: 44px;
+                                        height: 20px;
+                                        border_radius: 3px;
+                                        background: item.can_decode ? #10B98120 : #33415540;
+                                        Text { text: item.can_decode ? "DECODE" : "NO"; font_size: 9px; font_weight: 700; color: item.can_decode ? #10B981 : #64748B; horizontal_alignment: center; vertical_alignment: center; }
+                                    }
+                                    Rectangle {
+                                        width: 44px;
+                                        height: 20px;
+                                        border_radius: 3px;
+                                        background: item.can_encode ? #248BFF20 : #33415540;
+                                        Text { text: item.can_encode ? "ENCODE" : "NO"; font_size: 9px; font_weight: 700; color: item.can_encode ? #38BDF8 : #64748B; horizontal_alignment: center; vertical_alignment: center; }
+                                    }
+                                }
+
+                                // Engine
+                                Text { text: item.engine; width: 180px; font_size: 11px; color: #C8CDD7; vertical_alignment: center; overflow: elide; }
+
+                                // Status & Limitations
+                                Text { text: item.status_label + " — " + item.limitations; horizontal-stretch: 1; font_size: 10px; color: #8C96A8; vertical_alignment: center; overflow: elide; }
+
+                                // Action: Select Target
+                                HorizontalLayout {
+                                    width: 100px;
+                                    alignment: center;
+                                    if item.can_encode: SecondaryButton {
+                                        text: "Select Target";
+                                        clicked => {
+                                            root.convert_target_fmt = item.name;
+                                            root.select_target_format(item.name);
+                                            root.show_all_formats_modal = false;
+                                        }
+                                    }
+                                    if !item.can_encode: Text {
+                                        text: "Input Only";
+                                        font_size: 10px;
+                                        color: #64748B;
+                                        horizontal_alignment: center;
+                                        vertical_alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Modal Footer
+                Rectangle {
+                    height: 28px;
+                    vertical-stretch: 0;
+                    HorizontalLayout {
+                        alignment: space-between;
+                        Text { text: "💡 Camera RAW formats (CR2, NEF, ARW, DNG) are decode-only inputs. Choose PNG, JPG, or WebP to export."; font_size: 11px; color: #64748B; vertical_alignment: center; }
+                        Text { text: "60+ Formats Supported • Native Rust & External Engines"; font_size: 11px; font_weight: 600; color: #38BDF8; vertical_alignment: center; }
+                    }
                 }
             }
         }

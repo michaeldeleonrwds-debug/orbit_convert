@@ -286,3 +286,40 @@ export component AppCheckBox inherits Rectangle {
         }
     }
 }
+
+export component SearchInput inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder: "Search formats...";
+    callback changed(string);
+    callback accepted(string);
+
+    height: 38px;
+    border_radius: 6px;
+    background: #0d1017;
+    border_width: 1px;
+    border_color: input.has_focus ? #248BFF : #1e2638;
+
+    HorizontalLayout {
+        padding_left: 12px;
+        padding_right: 12px;
+        spacing: 10px;
+        alignment: center;
+
+        Text {
+            text: "🔍";
+            font_size: 13px;
+            vertical_alignment: center;
+        }
+
+        input := TextInput {
+            width: 100%;
+            font_size: 13px;
+            color: #FFFFFF;
+            vertical_alignment: center;
+            single_line: true;
+            edited => { root.changed(self.text); }
+            accepted => { root.accepted(self.text); }
+        }
+    }
+}
+
