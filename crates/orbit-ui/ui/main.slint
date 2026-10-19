@@ -174,9 +174,8 @@ export component MainWindow inherits Window {
                             alignment: start;
 
                             Text {
-                                text: "✦";
-                                font_size: 13px;
-                                color: root.selected_nav == 0 ? #248BFF : #8C96A8;
+                                text: "📊";
+                                font_size: 14px;
                                 vertical_alignment: center;
                             }
                             Text {
@@ -206,9 +205,8 @@ export component MainWindow inherits Window {
                             alignment: start;
 
                             Text {
-                                text: "↻";
-                                font_size: 15px;
-                                color: root.selected_nav == 1 ? #248BFF : #8C96A8;
+                                text: "🔄";
+                                font_size: 14px;
                                 vertical_alignment: center;
                             }
                             Text {
@@ -238,9 +236,8 @@ export component MainWindow inherits Window {
                             alignment: start;
 
                             Text {
-                                text: "◷";
-                                font_size: 13px;
-                                color: root.selected_nav == 2 ? #248BFF : #8C96A8;
+                                text: "🕒";
+                                font_size: 14px;
                                 vertical_alignment: center;
                             }
                             Text {
@@ -1101,15 +1098,31 @@ export component MainWindow inherits Window {
                             alignment: space-between;
 
                             HorizontalLayout {
-                                alignment: center;
                                 spacing: 14px;
+                                alignment: center;
 
-                                Text { text: "📁"; font_size: 18px; }
+                                Text {
+                                    text: "📁";
+                                    font_size: 22px;
+                                    vertical_alignment: center;
+                                }
+
                                 VerticalLayout {
                                     alignment: center;
-                                    spacing: 2px;
-                                    Text { text: folder.name; font_size: 13px; font_weight: 700; color: #FFFFFF; }
-                                    Text { text: folder.path; font_size: 11px; color: #8C96A8; }
+                                    spacing: 3px;
+                                    Text {
+                                        text: folder.name;
+                                        font_size: 13px;
+                                        font_weight: 700;
+                                        color: #FFFFFF;
+                                        vertical_alignment: center;
+                                    }
+                                    Text {
+                                        text: folder.path;
+                                        font_size: 11px;
+                                        color: #8C96A8;
+                                        vertical_alignment: center;
+                                    }
                                 }
                             }
 

@@ -10,6 +10,7 @@ export struct WheelSector {
     angle_deg: float,
     index: int,
     path_commands: string,
+    icon_symbol: string,
 }
 
 export component RadialWheel inherits Window {
@@ -64,18 +65,25 @@ export component RadialWheel inherits Window {
 
     // Format Icons and Labels centered inside each wedge
     for sector in root.sectors: Rectangle {
-        x: sector.pos_x - 36px;
-        y: sector.pos_y - 24px;
-        width: 72px;
-        height: 48px;
+        x: sector.pos_x - 30px;
+        y: sector.pos_y - 26px;
+        width: 60px;
+        height: 52px;
 
         VerticalLayout {
             alignment: center;
-            spacing: 2px;
+            spacing: 1px;
+
+            Text {
+                text: sector.icon_symbol;
+                font_size: 15px;
+                horizontal_alignment: center;
+                vertical_alignment: center;
+            }
 
             Text {
                 text: sector.label;
-                font_size: 13px;
+                font_size: 12px;
                 font_weight: 800;
                 color: root.highlighted_index == sector.index ? #FFFFFF : #C8CDD7;
                 horizontal_alignment: center;
@@ -108,43 +116,48 @@ export component RadialWheel inherits Window {
 
         VerticalLayout {
             alignment: center;
-            spacing: 4px;
-            padding_left: 10px;
-            padding_right: 10px;
+            spacing: 5px;
+            padding_left: 12px;
+            padding_right: 12px;
 
-            // Source format icon badge
-            Rectangle {
-                width: 32px;
-                height: 32px;
-                border_radius: 6px;
-                background: #1e2533;
-                border_width: 1px;
-                border_color: #3b465e;
+            // Source format badge - 100% Horizontally and Vertically Centered
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 44px;
+                    height: 24px;
+                    border_radius: 6px;
+                    background: #1e2533;
+                    border_width: 1px;
+                    border_color: #3b465e;
 
-                Text {
-                    text: root.source_ext;
-                    font_size: 11px;
-                    font_weight: 800;
-                    color: #FFFFFF;
-                    horizontal_alignment: center;
-                    vertical_alignment: center;
+                    Text {
+                        text: root.source_ext;
+                        font_size: 11px;
+                        font_weight: 800;
+                        color: #FFFFFF;
+                        horizontal_alignment: center;
+                        vertical_alignment: center;
+                    }
                 }
             }
 
-            // Source file name
+            // Source file name - 100% Centered
             Text {
                 text: root.source_name;
                 horizontal_alignment: center;
+                vertical_alignment: center;
                 font_size: 11px;
-                font_weight: 600;
+                font_weight: 700;
                 color: #FFFFFF;
                 overflow: elide;
             }
 
-            // Hint / Status text
+            // Hint / Status text - 100% Centered
             Text {
                 text: root.status_text;
                 horizontal_alignment: center;
+                vertical_alignment: center;
                 font_size: 10px;
                 font_weight: 500;
                 color: root.highlighted_index >= 0 ? #60A5FA : #8C96A8;

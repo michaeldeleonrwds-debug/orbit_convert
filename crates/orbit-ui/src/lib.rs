@@ -55,40 +55,40 @@ pub fn build_wheel_sectors(
         );
 
         // Icon and text positioned in the middle of the annular band
-        let mid_radius = (outer_radius + inner_radius) / 2.0;
+        let mid_radius = 124.0;
         let mid_x = center_x + mid_radius * center_angle.cos();
         let mid_y = center_y + mid_radius * center_angle.sin();
 
         let angle_deg = (center_angle.to_degrees() + 360.0) % 360.0;
 
-        let (category_str, color) = match fmt {
-            FileFormat::Png => ("IMG", Color::from_rgb_u8(37, 99, 235)),
-            FileFormat::Jpg => ("IMG", Color::from_rgb_u8(234, 88, 12)),
-            FileFormat::Webp => ("IMG", Color::from_rgb_u8(16, 185, 129)),
-            FileFormat::Ico => ("ICO", Color::from_rgb_u8(139, 92, 246)),
-            FileFormat::Bmp => ("IMG", Color::from_rgb_u8(6, 182, 212)),
-            FileFormat::Tiff => ("IMG", Color::from_rgb_u8(236, 72, 153)),
-            FileFormat::Svg => ("VEC", Color::from_rgb_u8(245, 158, 11)),
-            FileFormat::Gif => ("GIF", Color::from_rgb_u8(217, 70, 239)),
-            FileFormat::Mp4 => ("VID", Color::from_rgb_u8(59, 130, 246)),
-            FileFormat::Mov => ("VID", Color::from_rgb_u8(99, 102, 241)),
-            FileFormat::Mkv => ("VID", Color::from_rgb_u8(147, 51, 234)),
-            FileFormat::Avi => ("VID", Color::from_rgb_u8(168, 85, 247)),
-            FileFormat::Webm => ("VID", Color::from_rgb_u8(20, 184, 166)),
-            FileFormat::Mp3 => ("AUD", Color::from_rgb_u8(234, 88, 12)),
-            FileFormat::Wav => ("AUD", Color::from_rgb_u8(245, 158, 11)),
-            FileFormat::Flac => ("AUD", Color::from_rgb_u8(16, 185, 129)),
-            FileFormat::Aac => ("AUD", Color::from_rgb_u8(14, 165, 233)),
-            FileFormat::M4a => ("AUD", Color::from_rgb_u8(99, 102, 241)),
-            FileFormat::Ogg => ("AUD", Color::from_rgb_u8(244, 63, 94)),
-            FileFormat::Csv => ("DATA", Color::from_rgb_u8(16, 185, 129)),
-            FileFormat::Xlsx => ("SHEET", Color::from_rgb_u8(34, 197, 94)),
-            FileFormat::Json => ("DATA", Color::from_rgb_u8(245, 158, 11)),
-            FileFormat::Tsv => ("DATA", Color::from_rgb_u8(20, 184, 166)),
-            FileFormat::Pdf => ("DOC", Color::from_rgb_u8(239, 68, 68)),
-            FileFormat::Docx => ("DOC", Color::from_rgb_u8(59, 130, 246)),
-            FileFormat::Txt => ("DOC", Color::from_rgb_u8(148, 163, 184)),
-            FileFormat::Html => ("WEB", Color::from_rgb_u8(249, 115, 22)),
+        let (category_str, color, icon_symbol) = match fmt {
+            FileFormat::Png => ("IMG", Color::from_rgb_u8(37, 99, 235), "🖼️"),
+            FileFormat::Jpg => ("IMG", Color::from_rgb_u8(234, 88, 12), "📷"),
+            FileFormat::Webp => ("IMG", Color::from_rgb_u8(16, 185, 129), "🌐"),
+            FileFormat::Ico => ("ICO", Color::from_rgb_u8(139, 92, 246), "🔲"),
+            FileFormat::Bmp => ("IMG", Color::from_rgb_u8(6, 182, 212), "🎨"),
+            FileFormat::Tiff => ("IMG", Color::from_rgb_u8(236, 72, 153), "🗂️"),
+            FileFormat::Svg => ("VEC", Color::from_rgb_u8(245, 158, 11), "✨"),
+            FileFormat::Gif => ("GIF", Color::from_rgb_u8(217, 70, 239), "🎞️"),
+            FileFormat::Mp4 => ("VID", Color::from_rgb_u8(59, 130, 246), "🎬"),
+            FileFormat::Mov => ("VID", Color::from_rgb_u8(99, 102, 241), "🎥"),
+            FileFormat::Mkv => ("VID", Color::from_rgb_u8(147, 51, 234), "📼"),
+            FileFormat::Avi => ("VID", Color::from_rgb_u8(168, 85, 247), "📹"),
+            FileFormat::Webm => ("VID", Color::from_rgb_u8(20, 184, 166), "📺"),
+            FileFormat::Mp3 => ("AUD", Color::from_rgb_u8(234, 88, 12), "🎵"),
+            FileFormat::Wav => ("AUD", Color::from_rgb_u8(245, 158, 11), "🔊"),
+            FileFormat::Flac => ("AUD", Color::from_rgb_u8(16, 185, 129), "🎼"),
+            FileFormat::Aac => ("AUD", Color::from_rgb_u8(14, 165, 233), "🎧"),
+            FileFormat::M4a => ("AUD", Color::from_rgb_u8(99, 102, 241), "🎶"),
+            FileFormat::Ogg => ("AUD", Color::from_rgb_u8(244, 63, 94), "🎙️"),
+            FileFormat::Csv => ("DATA", Color::from_rgb_u8(16, 185, 129), "📊"),
+            FileFormat::Xlsx => ("SHEET", Color::from_rgb_u8(34, 197, 94), "📈"),
+            FileFormat::Json => ("DATA", Color::from_rgb_u8(245, 158, 11), "📄"),
+            FileFormat::Tsv => ("DATA", Color::from_rgb_u8(20, 184, 166), "📋"),
+            FileFormat::Pdf => ("DOC", Color::from_rgb_u8(239, 68, 68), "📕"),
+            FileFormat::Docx => ("DOC", Color::from_rgb_u8(59, 130, 246), "📘"),
+            FileFormat::Txt => ("DOC", Color::from_rgb_u8(148, 163, 184), "📝"),
+            FileFormat::Html => ("WEB", Color::from_rgb_u8(249, 115, 22), "🌐"),
         };
 
         sector_list.push(WheelSector {
@@ -101,6 +101,7 @@ pub fn build_wheel_sectors(
             angle_deg,
             index: i as i32,
             path_commands: path_commands.into(),
+            icon_symbol: icon_symbol.into(),
         });
     }
 
