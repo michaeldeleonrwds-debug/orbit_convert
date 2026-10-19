@@ -1,0 +1,97 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="OrbitConvert"
+           Manufacturer="Michael De Leon"
+           Version="0.1.0"
+           UpgradeCode="C6D273A8-1E47-49F1-8B91-53697441B321"
+           Scope="perUserOrMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="..\assets\app_icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/michaeldeleonrwds-debug/orbit_convert" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="OrbitConvert">
+        <Directory Id="AssetsFolder" Name="assets" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="OrbitConvert" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="3F808796-0B28-4447-B9C0-D67A32490A50">
+        <File Id="OrbitAppExe" Source="..\target\release\orbit-app.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="LicenseFile" Guid="06D9A91D-47C0-461E-A374-27929424DC3D">
+        <File Id="LicenseTxt" Source="..\LICENSE" KeyPath="yes" />
+      </Component>
+      <Component Id="ExplorerContextMenu" Guid="98C60BE1-B8B7-4402-A6EB-3A81878E49A9">
+        <RegistryKey Root="HKCU" Key="Software\Classes\*\shell\OrbitConvert">
+          <RegistryValue Type="string" Value="Convert with OrbitConvert" />
+          <RegistryValue Name="Icon" Type="string" Value="[INSTALLFOLDER]assets\app_icon.ico" />
+          <RegistryKey Key="command">
+            <RegistryValue Type="string" Value="&quot;[!OrbitAppExe]&quot; &quot;%1&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+        <RegistryValue Root="HKCU" Key="Software\MichaelDeLeon\OrbitConvert" Name="context_menu" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="AssetComponents" Directory="AssetsFolder">
+      <Component Id="AppIconIco" Guid="A33F531B-3914-4286-9A01-38A23253FA5C">
+        <File Id="AppIconIcoFile" Source="..\assets\app_icon.ico" KeyPath="yes" />
+      </Component>
+      <Component Id="AppIconPng" Guid="E64B449A-60C1-4D3C-80FA-D9A3B59A7228">
+        <File Id="AppIconPngFile" Source="..\assets\app_icon.png" KeyPath="yes" />
+      </Component>
+      <Component Id="IconPng" Guid="808B6770-4E16-4643-8557-ED81B5E385D3">
+        <File Id="IconPngFile" Source="..\assets\icon.png" KeyPath="yes" />
+      </Component>
+      <Component Id="LogoPng" Guid="416CD309-8422-4217-BA01-CD1C05284B9D">
+        <File Id="LogoPngFile" Source="..\assets\logo.png" KeyPath="yes" />
+      </Component>
+      <Component Id="WordmarkPng" Guid="DBC4F973-2287-43CE-A4CD-7B03F80894C9">
+        <File Id="WordmarkPngFile" Source="..\assets\wordmark.png" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="ShortcutComponents">
+      <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="6A43C2E7-BC2F-438B-B0DC-B605E6098273">
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="OrbitConvert"
+                  Description="Universal File Converter"
+                  Target="[!OrbitAppExe]"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon" />
+        <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\MichaelDeLeon\OrbitConvert" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="15160E36-3CF8-4A16-8344-E8256F2F5374">
+        <Shortcut Id="ApplicationDesktopShortcut"
+                  Name="OrbitConvert"
+                  Description="Universal File Converter"
+                  Target="[!OrbitAppExe]"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\MichaelDeLeon\OrbitConvert" Name="desktop_shortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="MainFeature" Title="OrbitConvert" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="AssetComponents" />
+      <ComponentGroupRef Id="ShortcutComponents" />
+    </Feature>
+
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+  </Package>
+</Wix>
