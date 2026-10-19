@@ -8,8 +8,8 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_LMENU, VK_MENU, VK_OEM_3, VK_RMENU, VK_SHIFT,
-    VK_SPACE, VK_TAB,
+    GetAsyncKeyState, VK_CAPITAL, VK_CONTROL, VK_ESCAPE, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU,
+    VK_OEM_3, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetAncestor, GetClassNameW, GetForegroundWindow,
@@ -17,6 +17,72 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GA_ROOT, HHOOK, KBDLLHOOKSTRUCT, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
     WM_SYSKEYUP,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HotkeySettings {
+    pub wheel_a: String,
+    pub wheel_b: String,
+    pub command_palette: String,
+}
+
+impl Default for HotkeySettings {
+    fn default() -> Self {
+        Self {
+            wheel_a: "Hold Alt".to_string(),
+            wheel_b: "Hold ` (Backtick)".to_string(),
+            command_palette: "Ctrl+Shift+Space".to_string(),
+        }
+    }
+}
+
+static HOTKEY_SETTINGS: Mutex<Option<HotkeySettings>> = Mutex::new(None);
+
+pub fn configure_hotkeys(settings: HotkeySettings) {
+    if let Ok(mut lock) = HOTKEY_SETTINGS.lock() {
+        *lock = Some(settings);
+    }
+}
+
+fn get_current_hotkeys() -> HotkeySettings {
+    HOTKEY_SETTINGS
+        .lock()
+        .map(|guard| guard.clone().unwrap_or_default())
+        .unwrap_or_default()
+}
+
+fn matches_wheel_a_down(vk: u16, config_str: &str) -> bool {
+    match config_str {
+        "Hold Ctrl" => vk == VK_CONTROL.0 || vk == VK_LCONTROL.0 || vk == VK_RCONTROL.0,
+        "Hold Shift" => vk == VK_SHIFT.0 || vk == VK_LSHIFT.0 || vk == VK_RSHIFT.0,
+        "Hold CapsLock" => vk == VK_CAPITAL.0,
+        _ => vk == VK_MENU.0 || vk == VK_LMENU.0 || vk == VK_RMENU.0, // Default: "Hold Alt"
+    }
+}
+
+fn matches_wheel_b_down(vk: u16, config_str: &str) -> bool {
+    match config_str {
+        "Hold Tab" => vk == VK_TAB.0,
+        "Hold Q" => vk == 0x51,
+        "Hold X" => vk == 0x58,
+        "Hold C" => vk == 0x43,
+        _ => vk == VK_OEM_3.0, // Default: "Hold ` (Backtick)"
+    }
+}
+
+fn matches_command_palette(vk: u16, config_str: &str) -> bool {
+    unsafe {
+        let ctrl_held = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0;
+        let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0;
+        let alt_held = GetAsyncKeyState(VK_MENU.0 as i32) < 0;
+
+        match config_str {
+            "Ctrl+Space" => ctrl_held && !shift_held && vk == VK_SPACE.0,
+            "Alt+Space" => alt_held && vk == VK_SPACE.0,
+            "Ctrl+K" => ctrl_held && (vk == 0x4B || vk == 0x6B),
+            _ => ctrl_held && shift_held && vk == VK_SPACE.0, // Default: "Ctrl+Shift+Space"
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InteractionState {
@@ -59,14 +125,21 @@ unsafe extern "system" fn low_level_keyboard_proc(
             let kb = *kb_ptr;
             let vk = kb.vkCode as u16;
 
-            let is_alt = vk == VK_MENU.0 || vk == VK_LMENU.0 || vk == VK_RMENU.0;
+            let hotkeys = get_current_hotkeys();
+            let is_wheel_a = matches_wheel_a_down(vk, &hotkeys.wheel_a);
+            let is_wheel_b = matches_wheel_b_down(vk, &hotkeys.wheel_b);
+            let is_command_palette = matches_command_palette(vk, &hotkeys.command_palette);
             let is_escape = vk == VK_ESCAPE.0;
-            let is_tab = vk == VK_TAB.0;
-            let is_backtick = vk == VK_OEM_3.0;
-            let is_space = vk == VK_SPACE.0;
+            let is_tab = vk == VK_TAB.0 && hotkeys.wheel_b != "Hold Tab";
 
             if msg == WM_SYSKEYDOWN || msg == WM_KEYDOWN {
-                if is_alt {
+                if is_command_palette {
+                    if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
+                        let _ = tx.try_send(RawKeyEvent::CommandPalette);
+                    }
+                    // Consume key combo to avoid typing into active app
+                    return LRESULT(1);
+                } else if is_wheel_a {
                     // Suppress repeat events when already held
                     let was_held = ALT_HELD.swap(true, Ordering::SeqCst);
                     if !was_held {
@@ -74,27 +147,16 @@ unsafe extern "system" fn low_level_keyboard_proc(
                             let _ = tx.try_send(RawKeyEvent::AltDown);
                         }
                     }
-                } else if is_backtick {
-                    // Distinguish from Shift + ` (tilde ~)
+                } else if is_wheel_b {
                     let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0;
-                    if !shift_held {
+                    let ignore = hotkeys.wheel_b.contains("Backtick") && shift_held;
+                    if !ignore {
                         let was_held = BACKTICK_HELD.swap(true, Ordering::SeqCst);
                         if !was_held {
                             if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
                                 let _ = tx.try_send(RawKeyEvent::BacktickDown);
                             }
                         }
-                    }
-                } else if is_space {
-                    // Ctrl + Shift + Space: Command Palette
-                    let ctrl_held = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0;
-                    let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0;
-                    if ctrl_held && shift_held {
-                        if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
-                            let _ = tx.try_send(RawKeyEvent::CommandPalette);
-                        }
-                        // Consume space key to avoid typing space in active app
-                        return LRESULT(1);
                     }
                 } else if is_tab {
                     if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
@@ -106,12 +168,12 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     }
                 }
             } else if msg == WM_SYSKEYUP || msg == WM_KEYUP {
-                if is_alt {
+                if is_wheel_a {
                     ALT_HELD.store(false, Ordering::SeqCst);
                     if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
                         let _ = tx.try_send(RawKeyEvent::AltUp);
                     }
-                } else if is_backtick {
+                } else if is_wheel_b {
                     BACKTICK_HELD.store(false, Ordering::SeqCst);
                     if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
                         let _ = tx.try_send(RawKeyEvent::BacktickUp);

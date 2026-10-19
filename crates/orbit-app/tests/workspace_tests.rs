@@ -216,3 +216,42 @@ fn test_state_machine_transitions() {
     state = InteractionState::Idle;
     assert_eq!(state, InteractionState::Idle);
 }
+
+#[test]
+fn test_configurable_hotkeys_and_defaults() {
+    use orbit_core::config::AppConfig;
+    use orbit_windows::keyboard::{configure_hotkeys, HotkeySettings};
+
+    // 1. Verify default values
+    let mut config = AppConfig::default();
+    assert_eq!(config.hotkey_wheel_a, "Hold Alt");
+    assert_eq!(config.hotkey_wheel_b, "Hold ` (Backtick)");
+    assert_eq!(config.hotkey_command_palette, "Ctrl+Shift+Space");
+
+    // 2. Customize hotkeys
+    config.hotkey_wheel_a = "Hold Ctrl".to_string();
+    config.hotkey_wheel_b = "Hold Tab".to_string();
+    config.hotkey_command_palette = "Ctrl+Space".to_string();
+
+    configure_hotkeys(HotkeySettings {
+        wheel_a: config.hotkey_wheel_a.clone(),
+        wheel_b: config.hotkey_wheel_b.clone(),
+        command_palette: config.hotkey_command_palette.clone(),
+    });
+
+    assert_eq!(config.hotkey_wheel_a, "Hold Ctrl");
+    assert_eq!(config.hotkey_wheel_b, "Hold Tab");
+    assert_eq!(config.hotkey_command_palette, "Ctrl+Space");
+
+    // 3. Reset to defaults
+    config.reset_hotkeys_to_default();
+    assert_eq!(config.hotkey_wheel_a, "Hold Alt");
+    assert_eq!(config.hotkey_wheel_b, "Hold ` (Backtick)");
+    assert_eq!(config.hotkey_command_palette, "Ctrl+Shift+Space");
+
+    configure_hotkeys(HotkeySettings {
+        wheel_a: config.hotkey_wheel_a.clone(),
+        wheel_b: config.hotkey_wheel_b.clone(),
+        command_palette: config.hotkey_command_palette.clone(),
+    });
+}

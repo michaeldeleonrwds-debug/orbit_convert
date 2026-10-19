@@ -68,6 +68,30 @@ pub struct AppConfig {
     /// Minimize main window to system tray instead of exiting
     #[serde(default = "default_true")]
     pub minimize_to_tray: bool,
+
+    /// Conversion Wheel A trigger hotkey. Default: "Hold Alt"
+    #[serde(default = "default_wheel_a_hotkey")]
+    pub hotkey_wheel_a: String,
+
+    /// Quick Actions Wheel B trigger hotkey. Default: "Hold ` (Backtick)"
+    #[serde(default = "default_wheel_b_hotkey")]
+    pub hotkey_wheel_b: String,
+
+    /// Command Palette & Format Catalog global shortcut. Default: "Ctrl+Shift+Space"
+    #[serde(default = "default_command_palette_hotkey")]
+    pub hotkey_command_palette: String,
+}
+
+pub fn default_wheel_a_hotkey() -> String {
+    "Hold Alt".to_string()
+}
+
+pub fn default_wheel_b_hotkey() -> String {
+    "Hold ` (Backtick)".to_string()
+}
+
+pub fn default_command_palette_hotkey() -> String {
+    "Ctrl+Shift+Space".to_string()
 }
 
 fn default_true() -> bool {
@@ -233,11 +257,20 @@ impl Default for AppConfig {
             output_mode: default_output_mode(),
             open_after_conversion: false,
             minimize_to_tray: true,
+            hotkey_wheel_a: default_wheel_a_hotkey(),
+            hotkey_wheel_b: default_wheel_b_hotkey(),
+            hotkey_command_palette: default_command_palette_hotkey(),
         }
     }
 }
 
 impl AppConfig {
+    pub fn reset_hotkeys_to_default(&mut self) {
+        self.hotkey_wheel_a = default_wheel_a_hotkey();
+        self.hotkey_wheel_b = default_wheel_b_hotkey();
+        self.hotkey_command_palette = default_command_palette_hotkey();
+    }
+
     pub fn config_file_path() -> Option<PathBuf> {
         ProjectDirs::from("com", "orbitconvert", "OrbitConvert")
             .map(|proj| proj.config_dir().join("settings.toml"))

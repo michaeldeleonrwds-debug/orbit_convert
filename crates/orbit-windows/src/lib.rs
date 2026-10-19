@@ -15,6 +15,7 @@ pub use explorer::{
     ExplorerDiagnosticReport, ExplorerResolver, ResolvedExplorerItem,
 };
 pub use keyboard::{
-    is_explorer_or_desktop_active, InteractionState, KeyboardHookManager, RawKeyEvent,
+    configure_hotkeys, is_explorer_or_desktop_active, HotkeySettings, InteractionState,
+    KeyboardHookManager, RawKeyEvent,
 };
 pub use overlay::{configure_overlay_window, position_overlay_window};

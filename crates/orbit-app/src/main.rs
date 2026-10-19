@@ -245,6 +245,9 @@ fn main() {
         main_window.set_launch_on_startup(initial_config.launch_on_startup);
         main_window.set_minimize_to_tray(initial_config.minimize_to_tray);
         main_window.set_service_active(true);
+        main_window.set_hotkey_wheel_a(initial_config.hotkey_wheel_a.clone().into());
+        main_window.set_hotkey_wheel_b(initial_config.hotkey_wheel_b.clone().into());
+        main_window.set_hotkey_command_palette(initial_config.hotkey_command_palette.clone().into());
 
         if let Some(ref custom_path) = initial_config.custom_output_dir {
             main_window.set_output_mode("custom".into());
@@ -492,6 +495,12 @@ fn main() {
             return;
         }
     };
+
+    orbit_windows::configure_hotkeys(orbit_windows::HotkeySettings {
+        wheel_a: initial_config.hotkey_wheel_a.clone(),
+        wheel_b: initial_config.hotkey_wheel_b.clone(),
+        command_palette: initial_config.hotkey_command_palette.clone(),
+    });
 
     let resolver = Arc::new(ExplorerResolver::new());
 
@@ -762,11 +771,50 @@ fn main() {
                 cfg.show_notifications = m.get_show_notifications();
                 cfg.launch_on_startup = m.get_launch_on_startup();
                 cfg.minimize_to_tray = m.get_minimize_to_tray();
+                cfg.hotkey_wheel_a = m.get_hotkey_wheel_a().to_string();
+                cfg.hotkey_wheel_b = m.get_hotkey_wheel_b().to_string();
+                cfg.hotkey_command_palette = m.get_hotkey_command_palette().to_string();
                 let _ = cfg.save();
-                info!("Preferences saved successfully from Dashboard");
+                orbit_windows::configure_hotkeys(orbit_windows::HotkeySettings {
+                    wheel_a: cfg.hotkey_wheel_a.clone(),
+                    wheel_b: cfg.hotkey_wheel_b.clone(),
+                    command_palette: cfg.hotkey_command_palette.clone(),
+                });
+                info!("Preferences saved successfully: Wheel A = {}, Wheel B = {}, Command Palette = {}",
+                    cfg.hotkey_wheel_a, cfg.hotkey_wheel_b, cfg.hotkey_command_palette);
+                tray::send_global_notification(
+                    "OrbitConvert Preferences",
+                    &format!(
+                        "Settings saved.\n• Wheel A: {}\n• Wheel B: {}\n• Command Palette: {}",
+                        cfg.hotkey_wheel_a, cfg.hotkey_wheel_b, cfg.hotkey_command_palette
+                    ),
+                    false,
+                );
+            }
+        });
+    }
+
+    {
+        let m_weak = main_window.as_weak();
+        let config_clone = config.clone();
+        main_window.on_reset_hotkeys_to_default(move || {
+            if let Some(m) = m_weak.upgrade() {
+                let mut cfg = config_clone.lock().unwrap();
+                cfg.reset_hotkeys_to_default();
+                let _ = cfg.save();
+                m.set_hotkey_wheel_a(cfg.hotkey_wheel_a.clone().into());
+                m.set_hotkey_wheel_b(cfg.hotkey_wheel_b.clone().into());
+                m.set_hotkey_command_palette(cfg.hotkey_command_palette.clone().into());
+                orbit_windows::configure_hotkeys(orbit_windows::HotkeySettings {
+                    wheel_a: cfg.hotkey_wheel_a.clone(),
+                    wheel_b: cfg.hotkey_wheel_b.clone(),
+                    command_palette: cfg.hotkey_command_palette.clone(),
+                });
+                info!("Hotkeys restored to defaults: Wheel A = {}, Wheel B = {}, Command Palette = {}",
+                    cfg.hotkey_wheel_a, cfg.hotkey_wheel_b, cfg.hotkey_command_palette);
                 tray::send_global_notification(
                     "OrbitConvert",
-                    "Preferences updated and saved.",
+                    "Hotkeys restored to defaults:\n• Wheel A: Hold Alt\n• Wheel B: Hold ` (Backtick)\n• Command Palette: Ctrl+Shift+Space",
                     false,
                 );
             }
@@ -1189,6 +1237,7 @@ fn main() {
     let interaction_clone = interaction.clone();
     let active_id_for_loop = active_conversion_id.clone();
     let main_weak_for_loop = main_window.as_weak();
+    let config_for_loop = config.clone();
 
     timer.start(
         slint::TimerMode::Repeated,
@@ -1335,7 +1384,16 @@ fn main() {
                                     w.set_is_expanded(false);
                                     w.set_highlighted_inner_index(-1);
                                     w.set_highlighted_outer_index(-1);
-                                    w.set_status_text("Move cursor to format, release Alt to convert".into());
+                                    let hotkey_a = config_for_loop.lock().unwrap().hotkey_wheel_a.clone();
+                                    let key_label = match hotkey_a.as_str() {
+                                        "Hold Ctrl" => "Ctrl",
+                                        "Hold Shift" => "Shift",
+                                        "Hold CapsLock" => "CapsLock",
+                                        _ => "Alt",
+                                    };
+                                    w.set_status_text(
+                                        format!("Move cursor to format, release {} to convert", key_label).into(),
+                                    );
 
                                     w.window().set_position(LogicalPosition::new(
                                         wx as f32, wy as f32,
@@ -1483,8 +1541,17 @@ fn main() {
                                     w.set_outer_sectors(outer_sec);
                                     w.set_is_expanded(false);
                                     w.set_highlighted_inner_index(-1);
-                                    w.set_highlighted_outer_index(-1);
-                                    w.set_status_text("Move cursor to action, release ` to execute".into());
+                                    let hotkey_b = config_for_loop.lock().unwrap().hotkey_wheel_b.clone();
+                                    let key_label = match hotkey_b.as_str() {
+                                        "Hold Tab" => "Tab",
+                                        "Hold Q" => "Q",
+                                        "Hold X" => "X",
+                                        "Hold C" => "C",
+                                        _ => "`",
+                                    };
+                                    w.set_status_text(
+                                        format!("Move cursor to action, release {} to execute", key_label).into(),
+                                    );
 
                                     w.window().set_position(LogicalPosition::new(
                                         wx as f32, wy as f32,
@@ -1695,7 +1762,17 @@ fn main() {
                                         w.set_status_text("More Actions (Move to outer ring)".into());
                                     }
                                 } else {
-                                    w.set_status_text("Move cursor to action, release ` to execute".into());
+                                    let hotkey_b = config_for_loop.lock().unwrap().hotkey_wheel_b.clone();
+                                    let key_label = match hotkey_b.as_str() {
+                                        "Hold Tab" => "Tab",
+                                        "Hold Q" => "Q",
+                                        "Hold X" => "X",
+                                        "Hold C" => "C",
+                                        _ => "`",
+                                    };
+                                    w.set_status_text(
+                                        format!("Move cursor to action, release {} to execute", key_label).into(),
+                                    );
                                 }
                             }
                         }

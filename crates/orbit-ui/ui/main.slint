@@ -71,6 +71,11 @@ export component MainWindow inherits Window {
     in-out property <float> wheel_diameter: 340.0;
     in-out property <float> dead_zone: 72.5;
 
+    // Configurable Hotkeys state
+    in-out property <string> hotkey_wheel_a: "Hold Alt";
+    in-out property <string> hotkey_wheel_b: "Hold ` (Backtick)";
+    in-out property <string> hotkey_command_palette: "Ctrl+Shift+Space";
+
     // Diagnostics State
     in-out property <string> diag_window_class: "N/A";
     in-out property <string> diag_element_name: "None";
@@ -110,6 +115,7 @@ export component MainWindow inherits Window {
     callback clear_history_clicked();
     callback apply_preset_clicked(string);
     callback save_settings_clicked();
+    callback reset_hotkeys_to_default();
     callback run_diagnostics_clicked();
     callback choose_custom_output_clicked();
     callback toggle_service_clicked();
@@ -1569,6 +1575,411 @@ export component MainWindow inherits Window {
                     padding: 28px;
                     spacing: 20px;
                     alignment: start;
+
+                    // Hotkeys Configuration Card
+                    Rectangle {
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+                        vertical-stretch: 0;
+
+                        VerticalLayout {
+                            padding: 22px;
+                            spacing: 16px;
+                            alignment: start;
+
+                            // Title & Reset Defaults Button Row
+                            HorizontalLayout {
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    spacing: 3px;
+                                    Text {
+                                        text: "CONFIGURABLE KEYBOARD SHORTCUTS & TRIGGERS";
+                                        font_size: 11px;
+                                        font_weight: 700;
+                                        color: #64748B;
+                                        letter_spacing: 0.8px;
+                                    }
+                                    Text {
+                                        text: "Customize activation hotkeys for the Conversion Wheel, Quick Actions Wheel, and Command Palette.";
+                                        font_size: 11px;
+                                        color: #8C96A8;
+                                    }
+                                }
+
+                                SecondaryButton {
+                                    text: "↺ Reset to Defaults";
+                                    clicked => { root.reset_hotkeys_to_default(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
+
+                            // 1. Wheel A: Conversion Wheel
+                            VerticalLayout {
+                                spacing: 8px;
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text { text: "Conversion Wheel Trigger (Wheel A)"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text {
+                                        text: root.hotkey_wheel_a == "Hold Alt" ? "Hold Alt (Default)" : root.hotkey_wheel_a;
+                                        font_size: 12px;
+                                        font_weight: 700;
+                                        color: #38BDF8;
+                                    }
+                                }
+                                Text {
+                                    text: "Hold this key while hovering a file in Windows File Explorer or Desktop to display valid destination formats.";
+                                    font_size: 11px;
+                                    color: #64748B;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    // Hold Alt (Default)
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_a == "Hold Alt" ? #248BFF20 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_a == "Hold Alt" ? #248BFF : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Alt"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_a == "Hold Alt" ? "✓ Hold Alt (Default)" : "Hold Alt (Default)";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_a == "Hold Alt" ? 700 : 500;
+                                                color: root.hotkey_wheel_a == "Hold Alt" ? #38BDF8 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Hold Ctrl
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_a == "Hold Ctrl" ? #248BFF20 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_a == "Hold Ctrl" ? #248BFF : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Ctrl"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_a == "Hold Ctrl" ? "✓ Hold Ctrl" : "Hold Ctrl";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_a == "Hold Ctrl" ? 700 : 500;
+                                                color: root.hotkey_wheel_a == "Hold Ctrl" ? #38BDF8 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Hold Shift
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_a == "Hold Shift" ? #248BFF20 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_a == "Hold Shift" ? #248BFF : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Shift"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_a == "Hold Shift" ? "✓ Hold Shift" : "Hold Shift";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_a == "Hold Shift" ? 700 : 500;
+                                                color: root.hotkey_wheel_a == "Hold Shift" ? #38BDF8 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Hold CapsLock
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_a == "Hold CapsLock" ? #248BFF20 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_a == "Hold CapsLock" ? #248BFF : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold CapsLock"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_a == "Hold CapsLock" ? "✓ Hold CapsLock" : "Hold CapsLock";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_a == "Hold CapsLock" ? 700 : 500;
+                                                color: root.hotkey_wheel_a == "Hold CapsLock" ? #38BDF8 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
+
+                            // 2. Wheel B: Quick Actions Wheel
+                            VerticalLayout {
+                                spacing: 8px;
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text { text: "Quick Actions Wheel Trigger (Wheel B)"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text {
+                                        text: root.hotkey_wheel_b == "Hold ` (Backtick)" ? "Hold ` Backtick (Default)" : root.hotkey_wheel_b;
+                                        font_size: 12px;
+                                        font_weight: 700;
+                                        color: #A78BFA;
+                                    }
+                                }
+                                Text {
+                                    text: "Hold this key while hovering a file to trigger contextual tools (Remove BG, Rotate, Compress, Mute, Hash).";
+                                    font_size: 11px;
+                                    color: #64748B;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    // Hold ` Backtick (Default)
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_b == "Hold ` (Backtick)" ? #8B5CF625 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_b == "Hold ` (Backtick)" ? #8B5CF6 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold ` (Backtick)"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_b == "Hold ` (Backtick)" ? "✓ Hold ` Backtick (Default)" : "Hold ` Backtick (Default)";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_b == "Hold ` (Backtick)" ? 700 : 500;
+                                                color: root.hotkey_wheel_b == "Hold ` (Backtick)" ? #C4B5FD : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Hold Q
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_b == "Hold Q" ? #8B5CF625 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_b == "Hold Q" ? #8B5CF6 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold Q"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_b == "Hold Q" ? "✓ Hold Q" : "Hold Q";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_b == "Hold Q" ? 700 : 500;
+                                                color: root.hotkey_wheel_b == "Hold Q" ? #C4B5FD : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Hold Tab
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_b == "Hold Tab" ? #8B5CF625 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_b == "Hold Tab" ? #8B5CF6 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold Tab"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_b == "Hold Tab" ? "✓ Hold Tab" : "Hold Tab";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_b == "Hold Tab" ? 700 : 500;
+                                                color: root.hotkey_wheel_b == "Hold Tab" ? #C4B5FD : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Hold X
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_b == "Hold X" ? #8B5CF625 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_b == "Hold X" ? #8B5CF6 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold X"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_b == "Hold X" ? "✓ Hold X" : "Hold X";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_b == "Hold X" ? 700 : 500;
+                                                color: root.hotkey_wheel_b == "Hold X" ? #C4B5FD : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Hold C
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_wheel_b == "Hold C" ? #8B5CF625 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_wheel_b == "Hold C" ? #8B5CF6 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold C"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_wheel_b == "Hold C" ? "✓ Hold C" : "Hold C";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_wheel_b == "Hold C" ? 700 : 500;
+                                                color: root.hotkey_wheel_b == "Hold C" ? #C4B5FD : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
+
+                            // 3. Command Palette & Format Catalog
+                            VerticalLayout {
+                                spacing: 8px;
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text { text: "Command Palette & Format Catalog Shortcut"; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                    Text {
+                                        text: root.hotkey_command_palette == "Ctrl+Shift+Space" ? "Ctrl+Shift+Space (Default)" : root.hotkey_command_palette;
+                                        font_size: 12px;
+                                        font_weight: 700;
+                                        color: #10B981;
+                                    }
+                                }
+                                Text {
+                                    text: "Global keyboard shortcut to summon the searchable 60+ format catalog and command launcher.";
+                                    font_size: 11px;
+                                    color: #64748B;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    // Ctrl+Shift+Space (Default)
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_command_palette == "Ctrl+Shift+Space" ? #10B98125 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_command_palette == "Ctrl+Shift+Space" ? #10B981 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+Shift+Space"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_command_palette == "Ctrl+Shift+Space" ? "✓ Ctrl+Shift+Space (Default)" : "Ctrl+Shift+Space (Default)";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_command_palette == "Ctrl+Shift+Space" ? 700 : 500;
+                                                color: root.hotkey_command_palette == "Ctrl+Shift+Space" ? #6EE7B7 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Ctrl+Space
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_command_palette == "Ctrl+Space" ? #10B98125 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_command_palette == "Ctrl+Space" ? #10B981 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+Space"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_command_palette == "Ctrl+Space" ? "✓ Ctrl+Space" : "Ctrl+Space";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_command_palette == "Ctrl+Space" ? 700 : 500;
+                                                color: root.hotkey_command_palette == "Ctrl+Space" ? #6EE7B7 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Alt+Space
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_command_palette == "Alt+Space" ? #10B98125 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_command_palette == "Alt+Space" ? #10B981 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Alt+Space"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_command_palette == "Alt+Space" ? "✓ Alt+Space" : "Alt+Space";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_command_palette == "Alt+Space" ? 700 : 500;
+                                                color: root.hotkey_command_palette == "Alt+Space" ? #6EE7B7 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    // Ctrl+K
+                                    Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.hotkey_command_palette == "Ctrl+K" ? #10B98125 : #0d1017;
+                                        border_width: 1px;
+                                        border_color: root.hotkey_command_palette == "Ctrl+K" ? #10B981 : #1a202c;
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+K"; } }
+                                        HorizontalLayout {
+                                            padding_left: 14px;
+                                            padding_right: 14px;
+                                            alignment: center;
+                                            Text {
+                                                text: root.hotkey_command_palette == "Ctrl+K" ? "✓ Ctrl+K" : "Ctrl+K";
+                                                font_size: 11px;
+                                                font_weight: root.hotkey_command_palette == "Ctrl+K" ? 700 : 500;
+                                                color: root.hotkey_command_palette == "Ctrl+K" ? #6EE7B7 : #8C96A8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     HorizontalLayout {
                         spacing: 20px;
