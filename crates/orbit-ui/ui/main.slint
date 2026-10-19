@@ -589,6 +589,12 @@ export component MainWindow inherits Window {
                             }
 
                             SecondaryButton {
+                                text: "Command Palette";
+                                icon_text: "⚡";
+                                clicked => { root.show_all_formats_modal = true; root.open_all_formats_dialog(); }
+                            }
+
+                            SecondaryButton {
                                 text: "Run Diagnostics";
                                 icon_text: "🔍";
                                 clicked => { root.run_diagnostics_clicked(); }
@@ -2085,8 +2091,8 @@ export component MainWindow inherits Window {
 
                     VerticalLayout {
                         spacing: 2px;
-                        Text { text: "FORMAT CAPABILITY & COMPATIBILITY MATRIX"; font_size: 14px; font_weight: 800; color: #FFFFFF; letter_spacing: 0.5px; }
-                        Text { text: "Browse and select from 60+ verified formats, camera RAW profiles, and multimedia pipelines."; font_size: 11px; color: #8C96A8; }
+                        Text { text: "COMMAND PALETTE & FORMAT CATALOG (Ctrl+Shift+Space)"; font_size: 14px; font_weight: 800; color: #FFFFFF; letter_spacing: 0.5px; }
+                        Text { text: "Search and select from 60+ verified formats, camera RAW profiles, 3D models, archives, and documents."; font_size: 11px; color: #8C96A8; }
                     }
 
                     DangerButton {
@@ -2098,7 +2104,7 @@ export component MainWindow inherits Window {
                 // Search Bar
                 SearchInput {
                     text <=> root.format_search_filter;
-                    placeholder: "Search formats by extension, name, category, or engine (e.g. CR2, WebP, AVIF, RAW)...";
+                    placeholder: "Type to search formats, extensions, categories (e.g. WebP, CR2, MP4, PDF, GLB, ZIP)...";
                     changed(query) => { root.format_search_changed(query); }
                 }
 

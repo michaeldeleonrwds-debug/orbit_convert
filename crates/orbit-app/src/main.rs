@@ -936,6 +936,37 @@ fn main() {
         });
     }
 
+    if args.iter().any(|arg| arg == "--test-actions-wheel") {
+        info!("Running --test-actions-wheel demonstration");
+        let (inner_acts, outer_acts) = orbit_core::actions::get_quick_actions_for_format(FileFormat::Png);
+        let (inner_sec, outer_sec, _, _) = orbit_ui::build_two_level_action_sectors(
+            230.0,
+            230.0,
+            &inner_acts,
+            !outer_acts.is_empty(),
+            &outer_acts,
+        );
+        wheel.set_wheel_mode("ACTIONS".into());
+        wheel.set_source_ext("PNG".into());
+        wheel.set_source_name("product_photo.png".into());
+        wheel.set_inner_sectors(inner_sec);
+        wheel.set_outer_sectors(outer_sec);
+        wheel.set_is_expanded(false);
+        wheel.set_highlighted_inner_index(0);
+        wheel.set_highlighted_outer_index(-1);
+        wheel.set_status_text("Move cursor to action, release ` to execute".into());
+        wheel.window().set_position(LogicalPosition::new(300.0, 300.0));
+        let _ = wheel.show();
+
+        let wheel_weak = wheel.as_weak();
+        slint::Timer::single_shot(Duration::from_secs(4), move || {
+            if let Some(w) = wheel_weak.upgrade() {
+                let _ = w.hide();
+                std::process::exit(0);
+            }
+        });
+    }
+
     // Show MainWindow dashboard on startup unless --minimized is specified
     if !args.iter().any(|arg| arg == "--minimized") {
         let _ = main_window.show();

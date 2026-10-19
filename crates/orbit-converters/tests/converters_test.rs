@@ -175,3 +175,42 @@ fn test_document_conversions() {
     assert!(txt_content.contains("Feature 1"));
 }
 
+#[test]
+fn test_background_removal() {
+    use image::{Rgba, RgbaImage};
+    use orbit_converters::bg_removal::pure_rust_remove_background;
+
+    let dir = tempdir().unwrap();
+    let in_path = dir.path().join("test_subject.png");
+    let out_path = dir.path().join("test_subject_nobg.png");
+
+    // Create 100x100 white image with red circle at center
+    let mut img = RgbaImage::from_pixel(100, 100, Rgba([255, 255, 255, 255]));
+    for y in 30..70 {
+        for x in 30..70 {
+            let dx = x as i32 - 50;
+            let dy = y as i32 - 50;
+            if dx * dx + dy * dy <= 18 * 18 {
+                img.put_pixel(x, y, Rgba([255, 0, 0, 255]));
+            }
+        }
+    }
+    img.save(&in_path).unwrap();
+
+    // Run background removal
+    pure_rust_remove_background(&in_path, &out_path).unwrap();
+    assert!(out_path.exists());
+
+    let res = image::open(&out_path).unwrap().to_rgba8();
+    // Verify corner is transparent
+    let corner = res.get_pixel(0, 0);
+    assert_eq!(corner[3], 0, "Corner pixel should be fully transparent");
+
+    // Verify center red circle is opaque
+    let center = res.get_pixel(50, 50);
+    assert_eq!(center[0], 255);
+    assert_eq!(center[1], 0);
+    assert_eq!(center[2], 0);
+    assert_eq!(center[3], 255, "Center subject should remain fully opaque");
+}
+

@@ -1,4 +1,5 @@
 pub mod archives;
+pub mod bg_removal;
 pub mod data;
 pub mod documents;
 pub mod extended;

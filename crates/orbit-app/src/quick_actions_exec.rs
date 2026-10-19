@@ -475,14 +475,374 @@ pub fn execute_quick_action(
         }
 
         QuickAction::RemoveBackground => {
-            // Local AI Background Removal pipeline entry (Phase 5 will plug in local ONNX RMBG model)
-            if show_notifications {
-                crate::tray::send_global_notification(
-                    "Remove Background",
-                    &format!("Preparing AI background removal for {}", fname),
-                    false,
-                );
-            }
+            let src = source_path.to_path_buf();
+            let out = parent.join(format!("{}_nobg.png", stem));
+            std::thread::spawn(move || {
+                match orbit_converters::bg_removal::remove_background(&src, &out) {
+                    Ok(saved) => {
+                        if show_notifications {
+                            crate::tray::send_global_notification(
+                                "Background Removed",
+                                &format!("Transparent PNG created:\n{}", saved.display()),
+                                false,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Background removal failed: {}", e);
+                        if show_notifications {
+                            crate::tray::send_global_notification(
+                                "Background Removal Failed",
+                                &format!("{}", e),
+                                true,
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        QuickAction::ResizeImage => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_resized.{}", stem, ext));
+            std::thread::spawn(move || {
+                if let Ok(img) = image::open(&src) {
+                    let (w, h) = (img.width(), img.height());
+                    let target_w = (w / 2).max(1);
+                    let target_h = (h / 2).max(1);
+                    let resized = img.resize(target_w, target_h, image::imageops::FilterType::Lanczos3);
+                    if resized.save(&out).is_ok() {
+                        if show_notifications {
+                            crate::tray::send_global_notification(
+                                "Image Resized",
+                                &format!("Resized (50%) saved:\n{}", out.display()),
+                                false,
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        QuickAction::CompressImage | QuickAction::OptimizeImage => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_opt.{}", stem, ext));
+            std::thread::spawn(move || {
+                if let Ok(img) = image::open(&src) {
+                    if img.save(&out).is_ok() {
+                        if show_notifications {
+                            crate::tray::send_global_notification(
+                                "Image Optimized",
+                                &format!("Optimized image saved:\n{}", out.display()),
+                                false,
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        QuickAction::UpscaleImage => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_2x.{}", stem, ext));
+            std::thread::spawn(move || {
+                if let Ok(img) = image::open(&src) {
+                    let (w, h) = (img.width(), img.height());
+                    let upscaled = img.resize(w * 2, h * 2, image::imageops::FilterType::Lanczos3);
+                    if upscaled.save(&out).is_ok() {
+                        if show_notifications {
+                            crate::tray::send_global_notification(
+                                "Image Upscaled 2x",
+                                &format!("2x Lanczos upscaled image saved:\n{}", out.display()),
+                                false,
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        QuickAction::CropImage => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_cropped.{}", stem, ext));
+            std::thread::spawn(move || {
+                if let Ok(img) = image::open(&src) {
+                    let rgba = img.to_rgba8();
+                    let (w, h) = rgba.dimensions();
+                    let mut min_x = w;
+                    let mut max_x = 0;
+                    let mut min_y = h;
+                    let mut max_y = 0;
+                    for y in 0..h {
+                        for x in 0..w {
+                            let p = rgba.get_pixel(x, y);
+                            if p[3] > 10 && (p[0] < 250 || p[1] < 250 || p[2] < 250) {
+                                if x < min_x { min_x = x; }
+                                if x > max_x { max_x = x; }
+                                if y < min_y { min_y = y; }
+                                if y > max_y { max_y = y; }
+                            }
+                        }
+                    }
+                    if min_x < max_x && min_y < max_y {
+                        let cropped = image::imageops::crop_imm(&rgba, min_x, min_y, max_x - min_x + 1, max_y - min_y + 1);
+                        if cropped.to_image().save(&out).is_ok() {
+                            if show_notifications {
+                                crate::tray::send_global_notification(
+                                    "Image Auto-Cropped",
+                                    &format!("Cropped image saved:\n{}", out.display()),
+                                    false,
+                                );
+                            }
+                            return;
+                        }
+                    }
+                    // Fallback save
+                    let _ = img.save(&out);
+                }
+            });
+        }
+
+        QuickAction::RemoveMetadata => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_clean.{}", stem, ext));
+            std::thread::spawn(move || {
+                if let Ok(img) = image::open(&src) {
+                    if img.save(&out).is_ok() {
+                        if show_notifications {
+                            crate::tray::send_global_notification(
+                                "Metadata Stripped",
+                                &format!("Clean image without EXIF saved:\n{}", out.display()),
+                                false,
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        QuickAction::TrimVideo => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_trimmed.{}", stem, ext));
+            std::thread::spawn(move || {
+                let status = Command::new("ffmpeg")
+                    .args(&["-y", "-ss", "00:00:00", "-to", "00:00:30", "-i"])
+                    .arg(&src)
+                    .args(&["-c", "copy"])
+                    .arg(&out)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status();
+                if let Ok(s) = status {
+                    if s.success() && show_notifications {
+                        crate::tray::send_global_notification(
+                            "Video Trimmed",
+                            &format!("Trimmed video saved:\n{}", out.display()),
+                            false,
+                        );
+                    }
+                }
+            });
+        }
+
+        QuickAction::ResizeVideo => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_720p.{}", stem, ext));
+            std::thread::spawn(move || {
+                let status = Command::new("ffmpeg")
+                    .args(&["-y", "-i"])
+                    .arg(&src)
+                    .args(&["-vf", "scale=-2:720", "-c:v", "libx264", "-crf", "23", "-c:a", "copy"])
+                    .arg(&out)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status();
+                if let Ok(s) = status {
+                    if s.success() && show_notifications {
+                        crate::tray::send_global_notification(
+                            "Video Resized",
+                            &format!("720p video saved:\n{}", out.display()),
+                            false,
+                        );
+                    }
+                }
+            });
+        }
+
+        QuickAction::ChangeFps => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_30fps.{}", stem, ext));
+            std::thread::spawn(move || {
+                let status = Command::new("ffmpeg")
+                    .args(&["-y", "-i"])
+                    .arg(&src)
+                    .args(&["-filter:v", "fps=30", "-c:a", "copy"])
+                    .arg(&out)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status();
+                if let Ok(s) = status {
+                    if s.success() && show_notifications {
+                        crate::tray::send_global_notification(
+                            "Video FPS Changed",
+                            &format!("30 FPS video saved:\n{}", out.display()),
+                            false,
+                        );
+                    }
+                }
+            });
+        }
+
+        QuickAction::ExtractFrames => {
+            let src = source_path.to_path_buf();
+            let frames_dir = parent.join(format!("{}_frames", stem));
+            std::thread::spawn(move || {
+                let _ = std::fs::create_dir_all(&frames_dir);
+                let out_pattern = frames_dir.join("frame_%04d.png");
+                let status = Command::new("ffmpeg")
+                    .args(&["-y", "-i"])
+                    .arg(&src)
+                    .args(&["-vf", "fps=1"])
+                    .arg(&out_pattern)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status();
+                if let Ok(s) = status {
+                    if s.success() && show_notifications {
+                        crate::tray::send_global_notification(
+                            "Frames Extracted",
+                            &format!("PNG frames extracted into:\n{}", frames_dir.display()),
+                            false,
+                        );
+                    }
+                }
+            });
+        }
+
+        QuickAction::TrimAudio => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_trimmed.{}", stem, ext));
+            std::thread::spawn(move || {
+                let status = Command::new("ffmpeg")
+                    .args(&["-y", "-ss", "00:00:00", "-t", "30", "-i"])
+                    .arg(&src)
+                    .args(&["-c", "copy"])
+                    .arg(&out)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status();
+                if let Ok(s) = status {
+                    if s.success() && show_notifications {
+                        crate::tray::send_global_notification(
+                            "Audio Trimmed",
+                            &format!("First 30 seconds saved:\n{}", out.display()),
+                            false,
+                        );
+                    }
+                }
+            });
+        }
+
+        QuickAction::CompressAudio => {
+            let src = source_path.to_path_buf();
+            let out = parent.join(format!("{}_128k.mp3", stem));
+            std::thread::spawn(move || {
+                let status = Command::new("ffmpeg")
+                    .args(&["-y", "-i"])
+                    .arg(&src)
+                    .args(&["-c:a", "libmp3lame", "-b:a", "128k"])
+                    .arg(&out)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status();
+                if let Ok(s) = status {
+                    if s.success() && show_notifications {
+                        crate::tray::send_global_notification(
+                            "Audio Compressed",
+                            &format!("128 kbps MP3 saved:\n{}", out.display()),
+                            false,
+                        );
+                    }
+                }
+            });
+        }
+
+        QuickAction::ChangeSampleRate => {
+            let src = source_path.to_path_buf();
+            let ext = source_format.primary_extension();
+            let out = parent.join(format!("{}_44k.{}", stem, ext));
+            std::thread::spawn(move || {
+                let status = Command::new("ffmpeg")
+                    .args(&["-y", "-i"])
+                    .arg(&src)
+                    .args(&["-ar", "44100"])
+                    .arg(&out)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status();
+                if let Ok(s) = status {
+                    if s.success() && show_notifications {
+                        crate::tray::send_global_notification(
+                            "Sample Rate Changed",
+                            &format!("44.1 kHz audio saved:\n{}", out.display()),
+                            false,
+                        );
+                    }
+                }
+            });
+        }
+
+        QuickAction::ExtractText => {
+            let src = source_path.to_path_buf();
+            let out = parent.join(format!("{}_text.txt", stem));
+            std::thread::spawn(move || {
+                let text_opt = if src.extension().map_or(false, |e| e == "docx") {
+                    orbit_converters::documents::DocumentConverter::extract_docx_text(&src).ok()
+                } else if src.extension().map_or(false, |e| e == "pdf") {
+                    orbit_converters::documents::DocumentConverter::extract_pdf_text(&src).ok()
+                } else if let Ok(s) = std::fs::read_to_string(&src) {
+                    Some(s)
+                } else {
+                    None
+                };
+
+                if let Some(txt) = text_opt {
+                    if std::fs::write(&out, txt).is_ok() {
+                        if show_notifications {
+                            crate::tray::send_global_notification(
+                                "Text Extracted",
+                                &format!("Text content saved to:\n{}", out.display()),
+                                false,
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        QuickAction::ListContents => {
+            let src = source_path.to_path_buf();
+            std::thread::spawn(move || {
+                let output = Command::new("tar")
+                    .args(&["-tf"])
+                    .arg(&src)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output();
+                if let Ok(out) = output {
+                    let list = String::from_utf8_lossy(&out.stdout).to_string();
+                    copy_text_to_clipboard(&list);
+                    if show_notifications {
+                        let lines = list.lines().take(5).collect::<Vec<_>>().join("\n");
+                        crate::tray::send_global_notification(
+                            "Archive Contents Copied",
+                            &format!("List copied to clipboard:\n{}", lines),
+                            false,
+                        );
+                    }
+                }
+            });
         }
 
         other => {

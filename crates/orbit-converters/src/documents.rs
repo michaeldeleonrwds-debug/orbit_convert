@@ -70,7 +70,7 @@ impl DocumentConverter {
             .replace("&quot;", "\"")
     }
 
-    fn extract_docx_text(path: &Path) -> Result<String, ConversionError> {
+    pub fn extract_docx_text(path: &Path) -> Result<String, ConversionError> {
         // DOCX is a zip archive containing word/document.xml
         let file = File::open(path).map_err(io_err)?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| {
@@ -91,7 +91,7 @@ impl DocumentConverter {
         Ok(text)
     }
 
-    fn extract_pdf_text(path: &Path) -> Result<String, ConversionError> {
+    pub fn extract_pdf_text(path: &Path) -> Result<String, ConversionError> {
         let file = File::open(path).map_err(io_err)?;
         let reader = BufReader::new(file);
         let mut extracted = String::new();
