@@ -1,15 +1,17 @@
 #![windows_subsystem = "windows"]
 
+mod quick_actions_exec;
 mod tray;
 
 use orbit_converters::register_all_converters;
+use orbit_core::actions::{get_quick_actions_for_format, QuickAction};
 use orbit_core::config::{AppConfig, ConversionPreset, WatchedFolder};
 use orbit_core::formats::FileFormat;
 use orbit_core::jobs::{JobManager, JobRecord, JobState};
 use orbit_core::registry::{ConversionOptions, ConversionRegistry};
 use orbit_ui::{
-    build_two_level_wheel_sectors, FolderItem, FormatCapabilityItem, HistoryItem, MainWindow,
-    PresetItem, RadialWheel,
+    build_two_level_action_sectors, build_two_level_wheel_sectors, FolderItem,
+    FormatCapabilityItem, HistoryItem, MainWindow, PresetItem, RadialWheel,
 };
 use orbit_windows::cursor::{
     calculate_clamped_window_pos, calculate_two_level_selection, get_current_cursor_pos, Point,
@@ -35,14 +37,23 @@ enum AppState {
     Converting,
 }
 
-// Wheel interaction state supporting two-level concentric radial menu
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WheelKind {
+    Convert,
+    QuickActions,
+}
+
+// Wheel interaction state supporting two-level concentric radial menu (Conversion & Quick Actions)
 struct InteractionData {
     state: AppState,
+    wheel_kind: WheelKind,
     center_pos: Point,
     source_path: Option<PathBuf>,
     source_format: Option<FileFormat>,
     inner_targets: Vec<FileFormat>,
     outer_targets: Vec<FileFormat>,
+    inner_actions: Vec<QuickAction>,
+    outer_actions: Vec<QuickAction>,
     has_more: bool,
     is_expanded: bool,
     current_highlighted_inner: i32,
@@ -255,11 +266,14 @@ fn main() {
 
     let interaction = Arc::new(Mutex::new(InteractionData {
         state: AppState::Idle,
+        wheel_kind: WheelKind::Convert,
         center_pos: Point::new(0.0, 0.0),
         source_path: None,
         source_format: None,
         inner_targets: Vec::new(),
         outer_targets: Vec::new(),
+        inner_actions: Vec::new(),
+        outer_actions: Vec::new(),
         has_more: false,
         is_expanded: false,
         current_highlighted_inner: -1,
@@ -1054,35 +1068,73 @@ fn main() {
             if data.is_preview {
                 return;
             }
-            let target_fmt = if is_outer {
-                data.outer_targets.get(idx as usize).copied()
-            } else {
-                if (idx as usize) < data.inner_targets.len() {
-                    data.inner_targets.get(idx as usize).copied()
+            if data.wheel_kind == WheelKind::Convert {
+                let target_fmt = if is_outer {
+                    data.outer_targets.get(idx as usize).copied()
                 } else {
-                    // Clicked More
-                    data.is_expanded = true;
-                    if let Some(w) = wheel_for_click.upgrade() {
-                        w.set_is_expanded(true);
+                    if (idx as usize) < data.inner_targets.len() {
+                        data.inner_targets.get(idx as usize).copied()
+                    } else {
+                        // Clicked More
+                        data.is_expanded = true;
+                        if let Some(w) = wheel_for_click.upgrade() {
+                            w.set_is_expanded(true);
+                        }
+                        return;
                     }
-                    return;
-                }
-            };
-
-            if let (Some(target_fmt), Some(src_path), Some(src_fmt)) =
-                (target_fmt, &data.source_path, data.source_format)
-            {
-                let custom_out = {
-                    let cfg = config_for_click.lock().unwrap();
-                    cfg.custom_output_dir.clone()
                 };
-                if let Some(w) = wheel_for_click.upgrade() {
-                    w.set_status_text("Converting ... 0%".into());
+
+                if let (Some(target_fmt), Some(src_path), Some(src_fmt)) =
+                    (target_fmt, &data.source_path, data.source_format)
+                {
+                    let custom_out = {
+                        let cfg = config_for_click.lock().unwrap();
+                        cfg.custom_output_dir.clone()
+                    };
+                    if let Some(w) = wheel_for_click.upgrade() {
+                        w.set_status_text("Converting ... 0%".into());
+                    }
+                    if let Ok(job_id) = job_mgr_for_click.submit(src_path.clone(), src_fmt, target_fmt, custom_out) {
+                        *active_id_for_click.lock().unwrap() = Some(job_id);
+                    }
+                    data.state = AppState::Converting;
                 }
-                if let Ok(job_id) = job_mgr_for_click.submit(src_path.clone(), src_fmt, target_fmt, custom_out) {
-                    *active_id_for_click.lock().unwrap() = Some(job_id);
+            } else {
+                // WheelKind::QuickActions
+                let action = if is_outer {
+                    data.outer_actions.get(idx as usize).copied()
+                } else {
+                    if (idx as usize) < data.inner_actions.len() {
+                        data.inner_actions.get(idx as usize).copied()
+                    } else {
+                        // Clicked More Actions
+                        data.is_expanded = true;
+                        if let Some(w) = wheel_for_click.upgrade() {
+                            w.set_is_expanded(true);
+                        }
+                        return;
+                    }
+                };
+
+                if let (Some(act), Some(src_path), Some(src_fmt)) =
+                    (action, &data.source_path, data.source_format)
+                {
+                    let show_notifs = config_for_click.lock().unwrap().show_notifications;
+                    quick_actions_exec::execute_quick_action(
+                        act,
+                        src_path,
+                        src_fmt,
+                        &job_mgr_for_click,
+                        show_notifs,
+                    );
+                    if let Some(w) = wheel_for_click.upgrade() {
+                        let _ = w.hide();
+                    }
+                    data.state = AppState::Idle;
+                    data.current_highlighted_inner = -1;
+                    data.current_highlighted_outer = -1;
+                    data.is_expanded = false;
                 }
-                data.state = AppState::Converting;
             }
         });
     }
@@ -1228,11 +1280,14 @@ fn main() {
                                 let center_pos = Point::new(wx as f32 + 230.0, wy as f32 + 230.0);
 
                                 data.state = AppState::WheelActive;
+                                data.wheel_kind = WheelKind::Convert;
                                 data.center_pos = center_pos;
                                 data.source_path = Some(item_path.clone());
                                 data.source_format = Some(src_fmt);
                                 data.inner_targets = inner_targets;
                                 data.outer_targets = outer_targets;
+                                data.inner_actions.clear();
+                                data.outer_actions.clear();
                                 data.has_more = has_more;
                                 data.is_expanded = false;
                                 data.current_highlighted_inner = -1;
@@ -1241,6 +1296,7 @@ fn main() {
 
                                 if let Some(w) = wheel_weak.upgrade() {
                                     w.set_is_preview(false);
+                                    w.set_wheel_mode("CONVERT".into());
                                     w.set_source_ext(src_fmt.display_label().into());
                                     w.set_source_name(fname.into());
                                     w.set_inner_sectors(inner_sec);
@@ -1260,7 +1316,7 @@ fn main() {
                     }
                     RawKeyEvent::AltUp => {
                         let mut data = interaction_clone.lock().unwrap();
-                        if data.state == AppState::WheelActive {
+                        if data.state == AppState::WheelActive && data.wheel_kind == WheelKind::Convert {
                             if !data.is_preview {
                                 let target_fmt: Option<FileFormat> = if data.current_highlighted_outer >= 0 {
                                     let idx = data.current_highlighted_outer as usize;
@@ -1321,6 +1377,153 @@ fn main() {
                             data.is_expanded = false;
                         }
                     }
+                    RawKeyEvent::BacktickDown => {
+                        let mut data = interaction_clone.lock().unwrap();
+                        if data.state == AppState::Idle {
+                            let cursor_pos = match get_current_cursor_pos() {
+                                Ok(pos) => pos,
+                                Err(e) => {
+                                    debug!("Could not get cursor position on BacktickDown: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            // Check whether cursor or foreground belongs to Explorer/Desktop
+                            if !is_cursor_or_foreground_explorer(cursor_pos.x, cursor_pos.y) {
+                                debug!(
+                                    x = cursor_pos.x,
+                                    y = cursor_pos.y,
+                                    "Backtick pressed, but cursor/foreground window is not Explorer or Desktop"
+                                );
+                                continue;
+                            }
+
+                            // Run cursor diagnosis
+                            let report = resolver_clone.diagnose_cursor(cursor_pos);
+                            info!(
+                                class = %report.window_class,
+                                is_explorer = report.is_explorer_or_desktop,
+                                element = ?report.clean_element_name,
+                                path = ?report.resolved_item_path,
+                                fmt = ?report.detected_format,
+                                "Explorer item inspection on BacktickDown (Quick Actions Wheel)"
+                            );
+
+                            if let (Some(ref item_path), Some(src_fmt)) =
+                                (&report.resolved_item_path, report.detected_format)
+                            {
+                                let (inner_actions, outer_actions) = get_quick_actions_for_format(src_fmt);
+                                let has_more = !outer_actions.is_empty();
+                                let (inner_sec, outer_sec, inner_acts, outer_acts) =
+                                    build_two_level_action_sectors(
+                                        230.0, 230.0, &inner_actions, has_more, &outer_actions,
+                                    );
+                                let fname = item_path
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+
+                                let (wx, wy) = calculate_clamped_window_pos(
+                                    cursor_pos, 460.0, 460.0,
+                                );
+                                let center_pos = Point::new(wx as f32 + 230.0, wy as f32 + 230.0);
+
+                                data.state = AppState::WheelActive;
+                                data.wheel_kind = WheelKind::QuickActions;
+                                data.center_pos = center_pos;
+                                data.source_path = Some(item_path.clone());
+                                data.source_format = Some(src_fmt);
+                                data.inner_targets.clear();
+                                data.outer_targets.clear();
+                                data.inner_actions = inner_acts;
+                                data.outer_actions = outer_acts;
+                                data.has_more = has_more;
+                                data.is_expanded = false;
+                                data.current_highlighted_inner = -1;
+                                data.current_highlighted_outer = -1;
+                                data.is_preview = false;
+
+                                if let Some(w) = wheel_weak.upgrade() {
+                                    w.set_is_preview(false);
+                                    w.set_wheel_mode("ACTIONS".into());
+                                    w.set_source_ext(src_fmt.display_label().into());
+                                    w.set_source_name(fname.into());
+                                    w.set_inner_sectors(inner_sec);
+                                    w.set_outer_sectors(outer_sec);
+                                    w.set_is_expanded(false);
+                                    w.set_highlighted_inner_index(-1);
+                                    w.set_highlighted_outer_index(-1);
+                                    w.set_status_text("Move cursor to action, release ` to execute".into());
+
+                                    w.window().set_position(LogicalPosition::new(
+                                        wx as f32, wy as f32,
+                                    ));
+                                    let _ = w.show();
+                                }
+                            }
+                        }
+                    }
+                    RawKeyEvent::BacktickUp => {
+                        let mut data = interaction_clone.lock().unwrap();
+                        if data.state == AppState::WheelActive && data.wheel_kind == WheelKind::QuickActions {
+                            if !data.is_preview {
+                                let selected_action: Option<QuickAction> = if data.current_highlighted_outer >= 0 {
+                                    let idx = data.current_highlighted_outer as usize;
+                                    data.outer_actions.get(idx).copied()
+                                } else if data.current_highlighted_inner >= 0 {
+                                    let idx = data.current_highlighted_inner as usize;
+                                    if idx < data.inner_actions.len() {
+                                        data.inner_actions.get(idx).copied()
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                };
+
+                                if let Some(act) = selected_action {
+                                    if let (Some(src_path), Some(src_fmt)) =
+                                        (&data.source_path, data.source_format)
+                                    {
+                                        info!(
+                                            source = %src_path.display(),
+                                            action = ?act,
+                                            "Quick Action initiated by backtick release"
+                                        );
+                                        let show_notifs = config_for_wheel.lock().unwrap().show_notifications;
+                                        quick_actions_exec::execute_quick_action(
+                                            act,
+                                            src_path,
+                                            src_fmt,
+                                            &job_mgr_clone,
+                                            show_notifs,
+                                        );
+                                    }
+                                } else {
+                                    debug!("Backtick released in dead zone or outside; quick action cancelled");
+                                }
+                            }
+
+                            if let Some(w) = wheel_weak.upgrade() {
+                                let _ = w.hide();
+                            }
+                            data.state = AppState::Idle;
+                            data.current_highlighted_inner = -1;
+                            data.current_highlighted_outer = -1;
+                            data.is_expanded = false;
+                        }
+                    }
+                    RawKeyEvent::CommandPalette => {
+                        info!("Command Palette triggered via Ctrl + Shift + Space");
+                        if let Some(m) = main_weak_for_loop.upgrade() {
+                            let _ = m.show();
+                            m.set_selected_nav(1);
+                            m.set_format_search_filter("".into());
+                            let cap_matrix = registry_clone.get_capability_matrix();
+                            m.set_capability_matrix(make_capability_matrix_model(&cap_matrix, ""));
+                            m.set_show_all_formats_modal(true);
+                        }
+                    }
                     RawKeyEvent::EscapeDown | RawKeyEvent::TabDown => {
                         let mut data = interaction_clone.lock().unwrap();
                         if data.state == AppState::WheelActive || data.state == AppState::Converting {
@@ -1341,12 +1544,24 @@ fn main() {
             let mut data = interaction_clone.lock().unwrap();
             if data.state == AppState::WheelActive {
                 if let Ok(cur_pos) = get_current_cursor_pos() {
-                    let total_inner = if data.has_more {
-                        data.inner_targets.len() + 1
+                    let total_inner = if data.wheel_kind == WheelKind::Convert {
+                        if data.has_more {
+                            data.inner_targets.len() + 1
+                        } else {
+                            data.inner_targets.len()
+                        }
                     } else {
-                        data.inner_targets.len()
+                        if data.has_more {
+                            data.inner_actions.len() + 1
+                        } else {
+                            data.inner_actions.len()
+                        }
                     };
-                    let total_outer = data.outer_targets.len();
+                    let total_outer = if data.wheel_kind == WheelKind::Convert {
+                        data.outer_targets.len()
+                    } else {
+                        data.outer_actions.len()
+                    };
 
                     let selection = calculate_two_level_selection(
                         data.center_pos,
@@ -1360,10 +1575,14 @@ fn main() {
                     );
 
                     // Auto-expansion check:
-                    // If user hovers over the "More" sector (index == data.inner_targets.len()),
-                    // expand the outer ring.
+                    // If user hovers over the "More" sector, expand the outer ring.
+                    let more_index = if data.wheel_kind == WheelKind::Convert {
+                        data.inner_targets.len()
+                    } else {
+                        data.inner_actions.len()
+                    };
                     let is_more_sector_hovered = match selection {
-                        TwoLevelSelection::Inner(idx) => data.has_more && idx == data.inner_targets.len(),
+                        TwoLevelSelection::Inner(idx) => data.has_more && idx == more_index,
                         _ => false,
                     };
 
@@ -1406,25 +1625,47 @@ fn main() {
                             w.set_highlighted_inner_index(new_inner);
                             w.set_highlighted_outer_index(new_outer);
 
-                            if new_outer >= 0 && (new_outer as usize) < data.outer_targets.len() {
-                                let target = data.outer_targets[new_outer as usize];
-                                w.set_status_text(
-                                    format!("Release to convert to {}", target.display_label())
-                                        .into(),
-                                );
-                            } else if new_inner >= 0 {
-                                let u_idx = new_inner as usize;
-                                if u_idx < data.inner_targets.len() {
-                                    let target = data.inner_targets[u_idx];
+                            if data.wheel_kind == WheelKind::Convert {
+                                if new_outer >= 0 && (new_outer as usize) < data.outer_targets.len() {
+                                    let target = data.outer_targets[new_outer as usize];
                                     w.set_status_text(
                                         format!("Release to convert to {}", target.display_label())
                                             .into(),
                                     );
-                                } else if data.has_more && u_idx == data.inner_targets.len() {
-                                    w.set_status_text("More Formats (Move to outer ring)".into());
+                                } else if new_inner >= 0 {
+                                    let u_idx = new_inner as usize;
+                                    if u_idx < data.inner_targets.len() {
+                                        let target = data.inner_targets[u_idx];
+                                        w.set_status_text(
+                                            format!("Release to convert to {}", target.display_label())
+                                                .into(),
+                                        );
+                                    } else if data.has_more && u_idx == data.inner_targets.len() {
+                                        w.set_status_text("More Formats (Move to outer ring)".into());
+                                    }
+                                } else {
+                                    w.set_status_text("Move cursor to format".into());
                                 }
                             } else {
-                                w.set_status_text("Move cursor to format".into());
+                                // WheelKind::QuickActions
+                                if new_outer >= 0 && (new_outer as usize) < data.outer_actions.len() {
+                                    let act = data.outer_actions[new_outer as usize];
+                                    w.set_status_text(
+                                        format!("{} — {}", act.label(), act.subtitle()).into(),
+                                    );
+                                } else if new_inner >= 0 {
+                                    let u_idx = new_inner as usize;
+                                    if u_idx < data.inner_actions.len() {
+                                        let act = data.inner_actions[u_idx];
+                                        w.set_status_text(
+                                            format!("{} — {}", act.label(), act.subtitle()).into(),
+                                        );
+                                    } else if data.has_more && u_idx == data.inner_actions.len() {
+                                        w.set_status_text("More Actions (Move to outer ring)".into());
+                                    }
+                                } else {
+                                    w.set_status_text("Move cursor to action, release ` to execute".into());
+                                }
                             }
                         }
                     }

@@ -27,6 +27,7 @@ export component RadialWheel inherits Window {
 
     in-out property <string> source_ext: "SVG";
     in-out property <string> source_name: "brand-logo.svg";
+    in-out property <string> wheel_mode: "CONVERT"; // "CONVERT" (Wheel A) or "ACTIONS" (Wheel B)
     in-out property <int> highlighted_inner_index: -1;
     in-out property <int> highlighted_outer_index: -1;
     in-out property <bool> is_expanded: false;
@@ -69,7 +70,7 @@ export component RadialWheel inherits Window {
             viewbox-width: 460;
             viewbox-height: 460;
             commands: sector.path_commands;
-            fill: root.highlighted_outer_index == sector.index ? #248BFF : #131824;
+            fill: root.highlighted_outer_index == sector.index ? (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF) : #131824;
             stroke: #0d1017;
             stroke_width: 1.5px;
         }
@@ -114,7 +115,7 @@ export component RadialWheel inherits Window {
         border_radius: 150px;
         background: #141824;
         border_width: 1.5px;
-        border_color: (root.highlighted_inner_index >= 0) ? #248BFF : #222b3d;
+        border_color: (root.highlighted_inner_index >= 0) ? (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF) : #222b3d;
 
         animate border_color { duration: 120ms; }
     }
@@ -129,7 +130,7 @@ export component RadialWheel inherits Window {
         viewbox-width: 460;
         viewbox-height: 460;
         commands: sector.path_commands;
-        fill: root.highlighted_inner_index == sector.index ? (sector.is_more ? #3B82F6 : #248BFF) : (sector.is_more ? #1e2638 : #181f2c);
+        fill: root.highlighted_inner_index == sector.index ? (sector.is_more ? (root.wheel_mode == "ACTIONS" ? #A855F7 : #3B82F6) : (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF)) : (sector.is_more ? #1e2638 : #181f2c);
         stroke: #0e121a;
         stroke_width: 2px;
     }
@@ -161,8 +162,8 @@ export component RadialWheel inherits Window {
             }
 
             if !sector.is_more: Text {
-                text: "." + sector.extension;
-                font_size: 10px;
+                text: root.wheel_mode == "ACTIONS" ? sector.extension : ("." + sector.extension);
+                font_size: root.wheel_mode == "ACTIONS" ? 9px : 10px;
                 font_weight: 600;
                 color: root.highlighted_inner_index == sector.index ? #FFFFFF : #8C96A8;
                 horizontal_alignment: center;
@@ -191,7 +192,7 @@ export component RadialWheel inherits Window {
         border_radius: 72.5px;
         background: #0e121a;
         border_width: 2px;
-        border_color: (root.highlighted_inner_index >= 0 || root.highlighted_outer_index >= 0) ? #248BFF : #222b3d;
+        border_color: (root.highlighted_inner_index >= 0 || root.highlighted_outer_index >= 0) ? (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF) : #222b3d;
 
         animate border_color { duration: 120ms; }
 
@@ -205,15 +206,15 @@ export component RadialWheel inherits Window {
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: 46px;
+                    width: root.wheel_mode == "ACTIONS" ? 72px : 46px;
                     height: 24px;
                     border_radius: 6px;
                     background: #1e2533;
                     border_width: 1px;
-                    border_color: #38bdf8;
+                    border_color: root.wheel_mode == "ACTIONS" ? #A855F7 : #38bdf8;
 
                     Text {
-                        text: root.source_ext;
+                        text: root.wheel_mode == "ACTIONS" ? "ACTIONS" : root.source_ext;
                         font_size: 11px;
                         font_weight: 800;
                         color: #FFFFFF;

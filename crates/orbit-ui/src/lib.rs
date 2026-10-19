@@ -1,5 +1,6 @@
 slint::include_modules!();
 
+use orbit_core::actions::QuickAction;
 use orbit_core::formats::FileFormat;
 use slint::{Color, ModelRc, VecModel};
 
@@ -292,3 +293,108 @@ pub fn build_wheel_sectors(
         build_two_level_wheel_sectors(center_x, center_y, formats, false, &[]);
     (inner, inner_fmts)
 }
+
+/// Generates radial sectors for a two-level concentric radial wheel displaying contextual Quick Actions (Wheel B).
+pub fn build_two_level_action_sectors(
+    cx: f32,
+    cy: f32,
+    inner_actions: &[QuickAction],
+    has_more: bool,
+    outer_actions: &[QuickAction],
+) -> (
+    ModelRc<WheelSector>,
+    ModelRc<WheelSector>,
+    Vec<QuickAction>,
+    Vec<QuickAction>,
+) {
+    let inner_count = inner_actions.len() + if has_more { 1 } else { 0 };
+    let mut inner_list = Vec::with_capacity(inner_count);
+
+    if inner_count > 0 {
+        let step = 2.0 * std::f32::consts::PI / inner_count as f32;
+        let half_step = step / 2.0;
+        let start_angle = -std::f32::consts::FRAC_PI_2; // 12 o'clock
+        let gap = if inner_count <= 3 { 0.015 } else { 0.018 };
+
+        for (i, &action) in inner_actions.iter().enumerate() {
+            let angle = start_angle + i as f32 * step;
+            let (path, mx, my) = build_annular_wedge_path(cx, cy, 75.0, 150.0, angle, half_step, gap);
+            let rgb = action.badge_rgb();
+
+            inner_list.push(WheelSector {
+                label: action.label().into(),
+                extension: action.subtitle().into(),
+                category: action.category_label().into(),
+                color_hex: Color::from_rgb_u8(rgb.0, rgb.1, rgb.2),
+                pos_x: mx,
+                pos_y: my,
+                angle_deg: (angle.to_degrees() + 360.0) % 360.0,
+                index: i as i32,
+                path_commands: path.into(),
+                icon_symbol: action.icon_symbol().into(),
+                is_outer: false,
+                is_more: false,
+            });
+        }
+
+        if has_more {
+            let more_idx = inner_actions.len();
+            let angle = start_angle + more_idx as f32 * step;
+            let (path, mx, my) = build_annular_wedge_path(cx, cy, 75.0, 150.0, angle, half_step, gap);
+
+            inner_list.push(WheelSector {
+                label: "More".into(),
+                extension: "Actions".into(),
+                category: "EXP".into(),
+                color_hex: Color::from_rgb_u8(168, 85, 247),
+                pos_x: mx,
+                pos_y: my,
+                angle_deg: (angle.to_degrees() + 360.0) % 360.0,
+                index: more_idx as i32,
+                path_commands: path.into(),
+                icon_symbol: "➕".into(),
+                is_outer: false,
+                is_more: true,
+            });
+        }
+    }
+
+    let outer_count = outer_actions.len();
+    let mut outer_list = Vec::with_capacity(outer_count);
+
+    if outer_count > 0 {
+        let step = 2.0 * std::f32::consts::PI / outer_count as f32;
+        let half_step = step / 2.0;
+        let start_angle = -std::f32::consts::FRAC_PI_2; // 12 o'clock
+        let gap = 0.015;
+
+        for (i, &action) in outer_actions.iter().enumerate() {
+            let angle = start_angle + i as f32 * step;
+            let (path, mx, my) = build_annular_wedge_path(cx, cy, 154.0, 220.0, angle, half_step, gap);
+            let rgb = action.badge_rgb();
+
+            outer_list.push(WheelSector {
+                label: action.label().into(),
+                extension: action.subtitle().into(),
+                category: action.category_label().into(),
+                color_hex: Color::from_rgb_u8(rgb.0, rgb.1, rgb.2),
+                pos_x: mx,
+                pos_y: my,
+                angle_deg: (angle.to_degrees() + 360.0) % 360.0,
+                index: i as i32,
+                path_commands: path.into(),
+                icon_symbol: action.icon_symbol().into(),
+                is_outer: true,
+                is_more: false,
+            });
+        }
+    }
+
+    (
+        ModelRc::new(VecModel::from(inner_list)),
+        ModelRc::new(VecModel::from(outer_list)),
+        inner_actions.to_vec(),
+        outer_actions.to_vec(),
+    )
+}
+

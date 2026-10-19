@@ -98,3 +98,80 @@ fn test_png_to_jpg_with_transparency_compositing() {
     let bg_pixel = decoded_jpg.get_pixel(0, 0);
     assert!(bg_pixel[0] >= 250 && bg_pixel[1] >= 250 && bg_pixel[2] >= 250);
 }
+
+#[test]
+fn test_model3d_conversions() {
+    let mut reg = ConversionRegistry::new();
+    register_all_converters(&mut reg);
+
+    let dir = tempdir().unwrap();
+    let obj_path = dir.path().join("cube.obj");
+    let obj_content = r#"# Simple Pyramid
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.5 1.0 0.0
+v 0.5 0.5 1.0
+f 1 2 3
+f 1 2 4
+f 2 3 4
+f 3 1 4
+"#;
+    fs::write(&obj_path, obj_content).unwrap();
+    let options = ConversionOptions::default();
+
+    // 1. OBJ -> STL
+    let stl_path = dir.path().join("pyramid.stl");
+    let converter = reg.find_converter(FileFormat::Obj, FileFormat::Stl).unwrap();
+    converter.convert(&obj_path, &stl_path, &options, None).unwrap();
+    assert!(stl_path.exists());
+    assert!(fs::metadata(&stl_path).unwrap().len() > 84);
+
+    // 2. STL -> PLY
+    let ply_path = dir.path().join("pyramid.ply");
+    let converter = reg.find_converter(FileFormat::Stl, FileFormat::Ply).unwrap();
+    converter.convert(&stl_path, &ply_path, &options, None).unwrap();
+    assert!(ply_path.exists());
+    let ply_content = fs::read_to_string(&ply_path).unwrap();
+    assert!(ply_content.contains("ply"));
+    assert!(ply_content.contains("element vertex"));
+
+    // 3. OBJ -> GLB
+    let glb_path = dir.path().join("pyramid.glb");
+    let converter = reg.find_converter(FileFormat::Obj, FileFormat::Glb).unwrap();
+    converter.convert(&obj_path, &glb_path, &options, None).unwrap();
+    assert!(glb_path.exists());
+    let glb_bytes = fs::read(&glb_path).unwrap();
+    // Verify glTF magic header 'glTF' (0x46546C67)
+    assert_eq!(&glb_bytes[0..4], b"glTF");
+}
+
+#[test]
+fn test_document_conversions() {
+    let mut reg = ConversionRegistry::new();
+    register_all_converters(&mut reg);
+
+    let dir = tempdir().unwrap();
+    let md_path = dir.path().join("readme.md");
+    let md_content = "# Project Title\n\nThis is a test paragraph.\n\n- Feature 1\n- Feature 2\n";
+    fs::write(&md_path, md_content).unwrap();
+    let options = ConversionOptions::default();
+
+    // 1. Markdown -> HTML
+    let html_path = dir.path().join("readme.html");
+    let converter = reg.find_converter(FileFormat::Md, FileFormat::Html).unwrap();
+    converter.convert(&md_path, &html_path, &options, None).unwrap();
+    assert!(html_path.exists());
+    let html_content = fs::read_to_string(&html_path).unwrap();
+    assert!(html_content.contains("<h1>Project Title</h1>"));
+    assert!(html_content.contains("<li>Feature 1</li>"));
+
+    // 2. HTML -> TXT
+    let txt_path = dir.path().join("readme.txt");
+    let converter = reg.find_converter(FileFormat::Html, FileFormat::Txt).unwrap();
+    converter.convert(&html_path, &txt_path, &options, None).unwrap();
+    assert!(txt_path.exists());
+    let txt_content = fs::read_to_string(&txt_path).unwrap();
+    assert!(txt_content.contains("Project Title"));
+    assert!(txt_content.contains("Feature 1"));
+}
+

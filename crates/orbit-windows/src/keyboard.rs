@@ -8,7 +8,8 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    VK_ESCAPE, VK_LMENU, VK_MENU, VK_RMENU, VK_TAB,
+    GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_LMENU, VK_MENU, VK_OEM_3, VK_RMENU, VK_SHIFT,
+    VK_SPACE, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetAncestor, GetClassNameW, GetForegroundWindow,
@@ -33,14 +34,18 @@ pub enum InteractionState {
 pub enum RawKeyEvent {
     AltDown,
     AltUp,
+    BacktickDown,
+    BacktickUp,
     EscapeDown,
     TabDown,
+    CommandPalette,
 }
 
 // Store raw pointer as isize so Mutex implements Send and Sync safely
 static HOOK_RAW: Mutex<Option<isize>> = Mutex::new(None);
 static EVENT_SENDER: Mutex<Option<Sender<RawKeyEvent>>> = Mutex::new(None);
 static ALT_HELD: AtomicBool = AtomicBool::new(false);
+static BACKTICK_HELD: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "system" fn low_level_keyboard_proc(
     n_code: i32,
@@ -57,6 +62,8 @@ unsafe extern "system" fn low_level_keyboard_proc(
             let is_alt = vk == VK_MENU.0 || vk == VK_LMENU.0 || vk == VK_RMENU.0;
             let is_escape = vk == VK_ESCAPE.0;
             let is_tab = vk == VK_TAB.0;
+            let is_backtick = vk == VK_OEM_3.0;
+            let is_space = vk == VK_SPACE.0;
 
             if msg == WM_SYSKEYDOWN || msg == WM_KEYDOWN {
                 if is_alt {
@@ -66,6 +73,28 @@ unsafe extern "system" fn low_level_keyboard_proc(
                         if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
                             let _ = tx.try_send(RawKeyEvent::AltDown);
                         }
+                    }
+                } else if is_backtick {
+                    // Distinguish from Shift + ` (tilde ~)
+                    let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0;
+                    if !shift_held {
+                        let was_held = BACKTICK_HELD.swap(true, Ordering::SeqCst);
+                        if !was_held {
+                            if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
+                                let _ = tx.try_send(RawKeyEvent::BacktickDown);
+                            }
+                        }
+                    }
+                } else if is_space {
+                    // Ctrl + Shift + Space: Command Palette
+                    let ctrl_held = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0;
+                    let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0;
+                    if ctrl_held && shift_held {
+                        if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
+                            let _ = tx.try_send(RawKeyEvent::CommandPalette);
+                        }
+                        // Consume space key to avoid typing space in active app
+                        return LRESULT(1);
                     }
                 } else if is_tab {
                     if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
@@ -81,6 +110,11 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     ALT_HELD.store(false, Ordering::SeqCst);
                     if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
                         let _ = tx.try_send(RawKeyEvent::AltUp);
+                    }
+                } else if is_backtick {
+                    BACKTICK_HELD.store(false, Ordering::SeqCst);
+                    if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {
+                        let _ = tx.try_send(RawKeyEvent::BacktickUp);
                     }
                 }
             }
