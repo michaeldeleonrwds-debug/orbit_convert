@@ -895,6 +895,35 @@ fn main() {
     }
 
     // -------------------------------------------------------------
+    // Intercept Window Close: Minimize to System Tray
+    // -------------------------------------------------------------
+    {
+        let m_weak = main_window.as_weak();
+        let config_for_close = config.clone();
+        main_window.window().on_close_requested(move || {
+            let show_notifications = {
+                let cfg = config_for_close.lock().unwrap();
+                cfg.show_notifications
+            };
+
+            info!("MainWindow close requested by user: minimizing to system tray instead of closing");
+            if let Some(m) = m_weak.upgrade() {
+                let _ = m.hide();
+            }
+
+            if show_notifications {
+                tray::send_global_notification(
+                    "OrbitConvert Running in Background",
+                    "OrbitConvert is minimized to the system tray. Hold Alt or backtick (`) to convert files.",
+                    false,
+                );
+            }
+
+            slint::CloseRequestResponse::HideWindow
+        });
+    }
+
+    // -------------------------------------------------------------
     // System Tray Menu Actions
     // -------------------------------------------------------------
     let resolver_for_tray = resolver.clone();

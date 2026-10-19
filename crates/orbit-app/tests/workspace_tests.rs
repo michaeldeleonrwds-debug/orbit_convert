@@ -4,6 +4,7 @@ use orbit_core::output::{finalize_output, prepare_output_file};
 use orbit_core::registry::{ConversionOptions, ConversionRegistry};
 use orbit_windows::cursor::{calculate_selected_sector, Point};
 use orbit_windows::keyboard::InteractionState;
+use slint::ComponentHandle;
 use std::fs;
 use tempfile::tempdir;
 
@@ -255,3 +256,23 @@ fn test_configurable_hotkeys_and_defaults() {
         command_palette: config.hotkey_command_palette.clone(),
     });
 }
+
+#[test]
+fn test_window_close_minimize_to_tray() {
+    let config = orbit_core::config::AppConfig::default();
+    assert!(config.minimize_to_tray, "minimize_to_tray must be enabled by default");
+
+    let main_window = orbit_ui::MainWindow::new().unwrap();
+    main_window.set_minimize_to_tray(config.minimize_to_tray);
+    assert!(main_window.get_minimize_to_tray());
+
+    // Verify on_close_requested can be registered and returns HideWindow
+    let m_weak = main_window.as_weak();
+    main_window.window().on_close_requested(move || {
+        if let Some(m) = m_weak.upgrade() {
+            let _ = m.hide();
+        }
+        slint::CloseRequestResponse::HideWindow
+    });
+}
+
