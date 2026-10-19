@@ -16,7 +16,7 @@ use windows::Win32::UI::Shell::{
     SIGDN_FILESYSPATH, SIGDN_NORMALDISPLAY, SVGIO_ALLVIEW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetAncestor, GetClassNameW, GetWindowRect, WindowFromPoint, GA_ROOT,
+    GetAncestor, GetClassNameW, IsWindowVisible, WindowFromPoint, GA_ROOT,
 };
 
 // SID_STopLevelBrowser GUID: {4C96BE40-915C-11CF-99D3-00AA004AE837}
@@ -30,6 +30,7 @@ pub struct ExplorerDiagnosticReport {
     pub window_class: String,
     pub is_explorer_or_desktop: bool,
     pub uia_element_name: Option<String>,
+    pub clean_element_name: Option<String>,
     pub uia_control_type: Option<i32>,
     pub shell_folder_path: Option<PathBuf>,
     pub resolved_item_path: Option<PathBuf>,
@@ -89,6 +90,7 @@ impl ExplorerResolver {
             window_class: String::new(),
             is_explorer_or_desktop: false,
             uia_element_name: None,
+            clean_element_name: None,
             uia_control_type: None,
             shell_folder_path: None,
             resolved_item_path: None,
@@ -104,7 +106,7 @@ impl ExplorerResolver {
 
             let hwnd = WindowFromPoint(pt);
             if hwnd.0.is_null() {
-                report.rejection_reason = Some("No window under cursor".into());
+                report.rejection_reason = Some("No window under cursor coordinates".into());
                 return report;
             }
             report.window_hwnd = hwnd.0 as isize;
@@ -145,24 +147,24 @@ impl ExplorerResolver {
                 None
             };
 
-            let target_name = if let Some(el) = uia_element {
+            let (raw_name, clean_name) = if let Some(el) = uia_element {
                 report.uia_element_name = Some(el.name.clone());
+                report.clean_element_name = Some(el.clean_name.clone());
                 report.uia_control_type = Some(el.control_type);
-                el.name
+                (el.name, el.clean_name)
             } else {
-                report.rejection_reason =
-                    Some("Cursor is not hovering over a list item or file icon".into());
-                return report;
+                (String::new(), String::new())
             };
-
-            if target_name.trim().is_empty() {
-                report.rejection_reason = Some("Hovered item has empty display name".into());
-                return report;
-            }
 
             // Check if on Desktop
             if class_name == "Progman" || class_name == "WorkerW" {
-                // User Desktop path
+                if clean_name.trim().is_empty() && raw_name.trim().is_empty() {
+                    report.rejection_reason =
+                        Some("Cursor is over desktop background wallpaper (no icon under cursor)".into());
+                    return report;
+                }
+
+                // 1. User Desktop folder
                 if let Ok(desktop_path_pwstr) =
                     SHGetKnownFolderPath(&FOLDERID_Desktop, KNOWN_FOLDER_FLAG(0), None)
                 {
@@ -171,10 +173,10 @@ impl ExplorerResolver {
                     let desktop_folder = PathBuf::from(desktop_path_str);
                     report.shell_folder_path = Some(desktop_folder.clone());
 
-                    Self::match_file_in_folder(&desktop_folder, &target_name, &mut report);
+                    Self::match_file_in_folder(&desktop_folder, &clean_name, &raw_name, &mut report);
                 }
 
-                // Public Desktop fallback
+                // 2. Public Desktop folder fallback
                 if report.resolved_item_path.is_none() {
                     if let Ok(pub_pwstr) =
                         SHGetKnownFolderPath(&FOLDERID_PublicDesktop, KNOWN_FOLDER_FLAG(0), None)
@@ -182,18 +184,52 @@ impl ExplorerResolver {
                         let pub_str = pub_pwstr.to_string().unwrap_or_default();
                         CoTaskMemFree(Some(pub_pwstr.as_ptr() as *const _));
                         let pub_folder = PathBuf::from(pub_str);
-                        Self::match_file_in_folder(&pub_folder, &target_name, &mut report);
+                        Self::match_file_in_folder(&pub_folder, &clean_name, &raw_name, &mut report);
+                    }
+                }
+
+                // 3. OneDrive Desktop folder fallback (if user has OneDrive backup enabled)
+                if report.resolved_item_path.is_none() {
+                    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+                        for onedrive_name in &["OneDrive\\Desktop", "OneDrive - Personal\\Desktop"] {
+                            let onedrive_desktop = PathBuf::from(&user_profile).join(onedrive_name);
+                            if onedrive_desktop.is_dir() {
+                                Self::match_file_in_folder(
+                                    &onedrive_desktop,
+                                    &clean_name,
+                                    &raw_name,
+                                    &mut report,
+                                );
+                                if report.resolved_item_path.is_some() {
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
             } else {
                 // Regular File Explorer window via IShellWindows
-                Self::resolve_via_shell_windows(root_hwnd, hwnd, pt, &target_name, &mut report);
+                Self::resolve_via_shell_windows(
+                    root_hwnd,
+                    hwnd,
+                    pt,
+                    &clean_name,
+                    &raw_name,
+                    &mut report,
+                );
             }
 
             if report.resolved_item_path.is_none() && report.rejection_reason.is_none() {
+                let disp = if !clean_name.is_empty() {
+                    clean_name
+                } else if !raw_name.is_empty() {
+                    raw_name
+                } else {
+                    "Unknown".to_string()
+                };
                 report.rejection_reason = Some(format!(
                     "Could not resolve item '{}' to filesystem path",
-                    target_name
+                    disp
                 ));
             }
 
@@ -204,8 +240,9 @@ impl ExplorerResolver {
     unsafe fn resolve_via_shell_windows(
         target_root_hwnd: HWND,
         target_child_hwnd: HWND,
-        cursor_pt: POINT,
-        target_name: &str,
+        _cursor_pt: POINT,
+        clean_name: &str,
+        raw_name: &str,
         report: &mut ExplorerDiagnosticReport,
     ) {
         let shell_windows: IShellWindows = match CoCreateInstance(&ShellWindows, None, CLSCTX_ALL) {
@@ -234,26 +271,25 @@ impl ExplorerResolver {
                 Err(_) => continue,
             };
 
-            // Check if this window corresponds to our target window or if cursor is inside its bounds
-            let is_match = if let Ok(window_hwnd) = shell_browser.GetWindow() {
-                let browser_root = GetAncestor(window_hwnd, GA_ROOT);
-                let mut rect = windows::Win32::Foundation::RECT::default();
-                let _ = GetWindowRect(window_hwnd, &mut rect);
-                let cursor_in_rect = cursor_pt.x >= rect.left
-                    && cursor_pt.x <= rect.right
-                    && cursor_pt.y >= rect.top
-                    && cursor_pt.y <= rect.bottom;
-
-                browser_root == target_root_hwnd
-                    || window_hwnd == target_root_hwnd
-                    || window_hwnd == target_child_hwnd
-                    || browser_root == target_child_hwnd
-                    || cursor_in_rect
-            } else {
-                false
+            let browser_hwnd = match shell_browser.GetWindow() {
+                Ok(h) => h,
+                Err(_) => continue,
             };
 
-            if !is_match {
+            let browser_root = GetAncestor(browser_hwnd, GA_ROOT);
+
+            // Must match the targeted Explorer top-level window
+            let is_target_window = browser_root == target_root_hwnd
+                || browser_hwnd == target_root_hwnd
+                || browser_hwnd == target_child_hwnd
+                || browser_root == target_child_hwnd;
+
+            if !is_target_window {
+                continue;
+            }
+
+            // In Windows 11 with multiple tabs (ShellTabWindowClass), verify this tab is visible
+            if !IsWindowVisible(browser_hwnd).as_bool() && browser_hwnd != target_root_hwnd {
                 continue;
             }
 
@@ -267,76 +303,120 @@ impl ExplorerResolver {
                 Err(_) => continue,
             };
 
-            // Get folder path
-            if let Ok(folder_item) = folder_view.GetFolder::<IShellItem>() {
-                if let Ok(path_pwstr) = folder_item.GetDisplayName(SIGDN_FILESYSPATH) {
-                    let folder_str = path_pwstr.to_string().unwrap_or_default();
-                    CoTaskMemFree(Some(path_pwstr.as_ptr() as *const _));
-                    let folder_path = PathBuf::from(folder_str);
-                    report.shell_folder_path = Some(folder_path.clone());
+            // 1. Try to get folder path (may be None for virtual folders like Home / Quick Access)
+            let folder_path: Option<PathBuf> = folder_view
+                .GetFolder::<IShellItem>()
+                .ok()
+                .and_then(|folder_item| {
+                    folder_item.GetDisplayName(SIGDN_FILESYSPATH).ok().map(|p| {
+                        let s = p.to_string().unwrap_or_default();
+                        CoTaskMemFree(Some(p.as_ptr() as *const _));
+                        PathBuf::from(s)
+                    })
+                });
 
-                    // Inspect items in view
-                    let item_count = folder_view.ItemCount(SVGIO_ALLVIEW).unwrap_or(0);
-                    for item_idx in 0..item_count {
-                        if let Ok(pidl) = folder_view.Item(item_idx as i32) {
-                            if let Ok(item) = SHCreateItemFromIDList::<IShellItem>(pidl) {
-                                let display_name = item
-                                    .GetDisplayName(SIGDN_NORMALDISPLAY)
-                                    .map(|p| {
-                                        let s = p.to_string().unwrap_or_default();
-                                        CoTaskMemFree(Some(p.as_ptr() as *const _));
-                                        s
+            if let Some(ref fp) = folder_path {
+                report.shell_folder_path = Some(fp.clone());
+
+                // Fast path: direct match in folder on physical disk
+                if !clean_name.is_empty() || !raw_name.is_empty() {
+                    Self::match_file_in_folder(fp, clean_name, raw_name, report);
+                    if report.resolved_item_path.is_some() {
+                        return;
+                    }
+                }
+            }
+
+            // 2. Check items inside the view (works for physical AND virtual folders like Home / Quick Access)
+            let item_count = folder_view.ItemCount(SVGIO_ALLVIEW).unwrap_or(0);
+            for item_idx in 0..item_count {
+                if let Ok(pidl) = folder_view.Item(item_idx as i32) {
+                    if let Ok(item) = SHCreateItemFromIDList::<IShellItem>(pidl) {
+                        let item_fs_path = item
+                            .GetDisplayName(SIGDN_FILESYSPATH)
+                            .map(|p| {
+                                let s = p.to_string().unwrap_or_default();
+                                CoTaskMemFree(Some(p.as_ptr() as *const _));
+                                PathBuf::from(s)
+                            })
+                            .ok();
+
+                        let display_name = item
+                            .GetDisplayName(SIGDN_NORMALDISPLAY)
+                            .map(|p| {
+                                let s = p.to_string().unwrap_or_default();
+                                CoTaskMemFree(Some(p.as_ptr() as *const _));
+                                s
+                            })
+                            .unwrap_or_default();
+
+                        // Check if this item matches clean_name or raw_name
+                        let is_match = (!clean_name.is_empty() && display_name.eq_ignore_ascii_case(clean_name))
+                            || (!raw_name.is_empty() && display_name.eq_ignore_ascii_case(raw_name))
+                            || item_fs_path.as_ref().map_or(false, |p| {
+                                p.file_name()
+                                    .map(|n| {
+                                        let ns = n.to_string_lossy();
+                                        (!clean_name.is_empty() && ns.eq_ignore_ascii_case(clean_name))
+                                            || (!raw_name.is_empty() && ns.eq_ignore_ascii_case(raw_name))
                                     })
-                                    .unwrap_or_default();
+                                    .unwrap_or(false)
+                                    || p.file_stem()
+                                        .map(|s| {
+                                            let ss = s.to_string_lossy();
+                                            (!clean_name.is_empty() && ss.eq_ignore_ascii_case(clean_name))
+                                                || (!raw_name.is_empty() && ss.eq_ignore_ascii_case(raw_name))
+                                        })
+                                        .unwrap_or(false)
+                            });
 
-                                let item_fs_path = item
-                                    .GetDisplayName(SIGDN_FILESYSPATH)
-                                    .map(|p| {
-                                        let s = p.to_string().unwrap_or_default();
-                                        CoTaskMemFree(Some(p.as_ptr() as *const _));
-                                        PathBuf::from(s)
-                                    })
-                                    .ok();
-
-                                let matches = display_name.eq_ignore_ascii_case(target_name)
-                                    || item_fs_path.as_ref().map_or(false, |p| {
-                                        p.file_stem()
-                                            .map(|s| s.to_string_lossy().eq_ignore_ascii_case(target_name))
-                                            .unwrap_or(false)
-                                            || p.file_name()
-                                                .map(|s| s.to_string_lossy().eq_ignore_ascii_case(target_name))
-                                                .unwrap_or(false)
-                                    });
-
-                                if matches {
-                                    if let Some(path) = item_fs_path {
-                                        if path.is_dir() {
-                                            report.rejection_reason =
-                                                Some("Hovered item is a directory, not a file".into());
-                                            return;
-                                        }
-
-                                        if path.is_file() {
-                                            report.resolved_item_path = Some(path.clone());
-                                            report.detected_format = FileFormat::from_path(&path);
-                                            if report.detected_format.is_none() {
-                                                report.rejection_reason = Some(format!(
-                                                    "File '{}' has unsupported format",
-                                                    path.display()
-                                                ));
-                                            }
-                                            return;
-                                        }
-                                    }
+                        if is_match {
+                            if let Some(path) = item_fs_path {
+                                if path.is_dir() {
+                                    report.rejection_reason =
+                                        Some("Hovered item is a directory, not a file".into());
+                                    return;
                                 }
+                                if path.is_file() {
+                                    report.resolved_item_path = Some(path.clone());
+                                    report.detected_format = FileFormat::from_path(&path);
+                                    if report.detected_format.is_none() {
+                                        report.rejection_reason = Some(format!(
+                                            "File '{}' format is currently unsupported",
+                                            path.display()
+                                        ));
+                                    }
+                                    return;
+                                }
+                            } else {
+                                report.rejection_reason = Some(format!(
+                                    "Item '{}' is a virtual Shell namespace object without a filesystem path",
+                                    display_name
+                                ));
+                                return;
                             }
                         }
                     }
+                }
+            }
 
-                    // Direct filesystem fallback in the folder
-                    Self::match_file_in_folder(&folder_path, target_name, report);
-                    if report.resolved_item_path.is_some() {
-                        return;
+            // 3. Fallback: If clean_name and raw_name were empty or hit testing missed,
+            // query currently focused or selected item in this folder view
+            if let Ok(focused_item_idx) = folder_view.GetFocusedItem() {
+                if focused_item_idx >= 0 {
+                    if let Ok(pidl) = folder_view.Item(focused_item_idx) {
+                        if let Ok(item) = SHCreateItemFromIDList::<IShellItem>(pidl) {
+                            if let Ok(path_pwstr) = item.GetDisplayName(SIGDN_FILESYSPATH) {
+                                let s = path_pwstr.to_string().unwrap_or_default();
+                                CoTaskMemFree(Some(path_pwstr.as_ptr() as *const _));
+                                let p = PathBuf::from(s);
+                                if p.is_file() {
+                                    report.resolved_item_path = Some(p.clone());
+                                    report.detected_format = FileFormat::from_path(&p);
+                                    return;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -345,37 +425,57 @@ impl ExplorerResolver {
 
     fn match_file_in_folder(
         folder: &Path,
-        target_name: &str,
+        clean_name: &str,
+        raw_name: &str,
         report: &mut ExplorerDiagnosticReport,
     ) {
         if !folder.is_dir() {
             return;
         }
 
-        // Direct exact match
-        let exact = folder.join(target_name);
-        if exact.is_dir() {
-            report.rejection_reason = Some("Hovered item is a directory, not a file".into());
-            return;
-        }
-        if exact.is_file() {
-            report.resolved_item_path = Some(exact.clone());
-            report.detected_format = FileFormat::from_path(&exact);
-            return;
+        // Direct candidate lookups
+        for candidate in &[clean_name, raw_name] {
+            if candidate.is_empty() {
+                continue;
+            }
+            let exact = folder.join(candidate);
+            if exact.is_file() {
+                report.resolved_item_path = Some(exact.clone());
+                report.detected_format = FileFormat::from_path(&exact);
+                if report.detected_format.is_none() {
+                    report.rejection_reason = Some(format!(
+                        "File '{}' format is currently unsupported",
+                        exact.display()
+                    ));
+                }
+                return;
+            }
+            if exact.is_dir() {
+                report.rejection_reason = Some("Hovered item is a directory, not a file".into());
+                return;
+            }
         }
 
-        // Search directory entries
+        // Search directory entries (handles hidden extensions, case-insensitivity, and aliases)
         if let Ok(entries) = std::fs::read_dir(folder) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 let stem_matches = path
                     .file_stem()
-                    .map(|s| s.to_string_lossy().eq_ignore_ascii_case(target_name))
+                    .map(|s| {
+                        let ss = s.to_string_lossy();
+                        (!clean_name.is_empty() && ss.eq_ignore_ascii_case(clean_name))
+                            || (!raw_name.is_empty() && ss.eq_ignore_ascii_case(raw_name))
+                    })
                     .unwrap_or(false);
 
                 let name_matches = path
                     .file_name()
-                    .map(|s| s.to_string_lossy().eq_ignore_ascii_case(target_name))
+                    .map(|s| {
+                        let ss = s.to_string_lossy();
+                        (!clean_name.is_empty() && ss.eq_ignore_ascii_case(clean_name))
+                            || (!raw_name.is_empty() && ss.eq_ignore_ascii_case(raw_name))
+                    })
                     .unwrap_or(false);
 
                 if stem_matches || name_matches {

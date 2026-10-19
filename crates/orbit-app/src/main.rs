@@ -785,13 +785,13 @@ fn main() {
 
                 if let Some(m) = m_weak.upgrade() {
                     m.set_diag_window_class(report.window_class.clone().into());
-                    m.set_diag_element_name(
-                        report
-                            .uia_element_name
-                            .clone()
-                            .unwrap_or_else(|| "None".to_string())
-                            .into(),
-                    );
+                    let display_el_name = match (&report.clean_element_name, &report.uia_element_name) {
+                        (Some(c), Some(r)) if c != r => format!("{} (raw: {})", c, r),
+                        (Some(c), _) => c.clone(),
+                        (None, Some(r)) => r.clone(),
+                        (None, None) => "None".to_string(),
+                    };
+                    m.set_diag_element_name(display_el_name.into());
                     m.set_diag_resolved_path(
                         report
                             .resolved_item_path
@@ -1105,6 +1105,7 @@ fn main() {
     let timer = slint::Timer::default();
     let interaction_clone = interaction.clone();
     let active_id_for_loop = active_conversion_id.clone();
+    let main_weak_for_loop = main_window.as_weak();
 
     timer.start(
         slint::TimerMode::Repeated,
@@ -1144,11 +1145,43 @@ fn main() {
                                 class = %report.window_class,
                                 is_explorer = report.is_explorer_or_desktop,
                                 element = ?report.uia_element_name,
+                                clean_element = ?report.clean_element_name,
                                 path = ?report.resolved_item_path,
                                 fmt = ?report.detected_format,
                                 reason = ?report.rejection_reason,
                                 "Explorer item inspection on AltDown"
                             );
+
+                            // Always update Diagnostics tab state so user sees real-time status
+                            if let Some(m) = main_weak_for_loop.upgrade() {
+                                m.set_diag_window_class(report.window_class.clone().into());
+                                let display_el_name = match (&report.clean_element_name, &report.uia_element_name) {
+                                    (Some(c), Some(r)) if c != r => format!("{} (raw: {})", c, r),
+                                    (Some(c), _) => c.clone(),
+                                    (None, Some(r)) => r.clone(),
+                                    (None, None) => "None".to_string(),
+                                };
+                                m.set_diag_element_name(display_el_name.into());
+                                m.set_diag_resolved_path(
+                                    report.resolved_item_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "None".to_string()).into(),
+                                );
+                                m.set_diag_detected_format(
+                                    report.detected_format.map(|f| f.display_label().to_string()).unwrap_or_else(|| "None".to_string()).into(),
+                                );
+                                let status_str = if let Some(ref r) = report.rejection_reason {
+                                    r.clone()
+                                } else if let Some(fmt) = report.detected_format {
+                                    let targets = registry_clone.get_available_targets_for_file(fmt, report.resolved_item_path.as_deref());
+                                    if targets.is_empty() {
+                                        format!("Resolved as {} (No conversion targets registered yet)", fmt.display_label())
+                                    } else {
+                                        format!("Ready to Convert ({} targets available)", targets.len())
+                                    }
+                                } else {
+                                    "No file resolved under cursor".to_string()
+                                };
+                                m.set_diag_status(status_str.into());
+                            }
 
                             if let (Some(ref item_path), Some(src_fmt)) =
                                 (&report.resolved_item_path, report.detected_format)
@@ -1164,6 +1197,10 @@ fn main() {
                                         path = %item_path.display(),
                                         "Supported file detected but no target conversions available in registry"
                                     );
+                                    tray::update_global_tooltip(&format!(
+                                        "OrbitConvert: {} (No registered conversion routes)",
+                                        src_fmt.display_label()
+                                    ));
                                     continue;
                                 }
 
@@ -1427,6 +1464,7 @@ fn print_diagnostic_report(report: &ExplorerDiagnosticReport) {
     println!("Window Class: {}", report.window_class);
     println!("Is Explorer/Desktop: {}", report.is_explorer_or_desktop);
     println!("UI Automation Element Name: {:?}", report.uia_element_name);
+    println!("Clean Element Name: {:?}", report.clean_element_name);
     println!("UI Automation Control Type: {:?}", report.uia_control_type);
     println!("Shell Folder Path: {:?}", report.shell_folder_path);
     println!("Resolved Item Path: {:?}", report.resolved_item_path);

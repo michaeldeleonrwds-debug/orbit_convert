@@ -13,8 +13,11 @@ pub enum FormatCategory {
     Video,
     Audio,
     Document,
+    Presentation,
     Spreadsheet,
     Data,
+    Archive,
+    Model3D,
 }
 
 impl fmt::Display for FormatCategory {
@@ -28,8 +31,11 @@ impl fmt::Display for FormatCategory {
             FormatCategory::Video => write!(f, "Video"),
             FormatCategory::Audio => write!(f, "Audio"),
             FormatCategory::Document => write!(f, "Documents"),
+            FormatCategory::Presentation => write!(f, "Presentations"),
             FormatCategory::Spreadsheet => write!(f, "Spreadsheets"),
             FormatCategory::Data => write!(f, "Data"),
+            FormatCategory::Archive => write!(f, "Archives"),
+            FormatCategory::Model3D => write!(f, "3D Models & CAD"),
         }
     }
 }
@@ -122,18 +128,68 @@ pub enum FileFormat {
     M4a,
     Ogg,
     Opus,
+    Aiff,
+    Wma,
 
-    // Spreadsheets & Data
+    // Spreadsheets
     Csv,
     Xlsx,
-    Json,
+    Xls,
+    Xlsm,
+    Ods,
     Tsv,
+
+    // Data
+    Json,
+    Xml,
+    Yaml,
+    Toml,
+    Ndjson,
 
     // Documents
     Pdf,
     Docx,
+    Doc,
+    Odt,
+    Rtf,
     Txt,
     Html,
+    Md,
+    Epub,
+
+    // Presentations
+    Pptx,
+    Ppt,
+    Odp,
+    Ppsx,
+    Pps,
+
+    // Archives
+    Zip,
+    SevenZip,
+    Rar,
+    Tar,
+    Gz,
+    Bz2,
+    Xz,
+    Zst,
+
+    // 3D Models
+    Glb,
+    Gltf,
+    Obj,
+    Fbx,
+    Stl,
+    Ply,
+    Dae,
+    ThreeDs,
+    Usd,
+    Usdz,
+    Abc,
+    Step,
+    Iges,
+    ThreeMf,
+    Off,
 }
 
 impl FileFormat {
@@ -227,18 +283,68 @@ impl FileFormat {
             "m4a" => Some(FileFormat::M4a),
             "ogg" | "oga" => Some(FileFormat::Ogg),
             "opus" => Some(FileFormat::Opus),
+            "aiff" | "aif" | "aifc" => Some(FileFormat::Aiff),
+            "wma" => Some(FileFormat::Wma),
 
-            // Spreadsheets & Data
+            // Spreadsheets
             "csv" => Some(FileFormat::Csv),
             "xlsx" => Some(FileFormat::Xlsx),
-            "json" => Some(FileFormat::Json),
+            "xls" => Some(FileFormat::Xls),
+            "xlsm" => Some(FileFormat::Xlsm),
+            "ods" => Some(FileFormat::Ods),
             "tsv" => Some(FileFormat::Tsv),
+
+            // Data
+            "json" => Some(FileFormat::Json),
+            "xml" => Some(FileFormat::Xml),
+            "yaml" | "yml" => Some(FileFormat::Yaml),
+            "toml" => Some(FileFormat::Toml),
+            "ndjson" | "jsonl" => Some(FileFormat::Ndjson),
 
             // Documents
             "pdf" => Some(FileFormat::Pdf),
             "docx" => Some(FileFormat::Docx),
-            "txt" => Some(FileFormat::Txt),
-            "html" | "htm" => Some(FileFormat::Html),
+            "doc" => Some(FileFormat::Doc),
+            "odt" => Some(FileFormat::Odt),
+            "rtf" => Some(FileFormat::Rtf),
+            "txt" | "text" | "log" | "ini" | "cfg" => Some(FileFormat::Txt),
+            "html" | "htm" | "xhtml" => Some(FileFormat::Html),
+            "md" | "markdown" => Some(FileFormat::Md),
+            "epub" => Some(FileFormat::Epub),
+
+            // Presentations
+            "pptx" => Some(FileFormat::Pptx),
+            "ppt" => Some(FileFormat::Ppt),
+            "odp" => Some(FileFormat::Odp),
+            "ppsx" => Some(FileFormat::Ppsx),
+            "pps" => Some(FileFormat::Pps),
+
+            // Archives
+            "zip" => Some(FileFormat::Zip),
+            "7z" => Some(FileFormat::SevenZip),
+            "rar" => Some(FileFormat::Rar),
+            "tar" => Some(FileFormat::Tar),
+            "gz" | "gzip" | "tgz" => Some(FileFormat::Gz),
+            "bz2" | "bzip2" | "tbz2" => Some(FileFormat::Bz2),
+            "xz" | "txz" => Some(FileFormat::Xz),
+            "zst" | "zstd" => Some(FileFormat::Zst),
+
+            // 3D Models
+            "glb" => Some(FileFormat::Glb),
+            "gltf" => Some(FileFormat::Gltf),
+            "obj" => Some(FileFormat::Obj),
+            "fbx" => Some(FileFormat::Fbx),
+            "stl" => Some(FileFormat::Stl),
+            "ply" => Some(FileFormat::Ply),
+            "dae" => Some(FileFormat::Dae),
+            "3ds" => Some(FileFormat::ThreeDs),
+            "usd" => Some(FileFormat::Usd),
+            "usdz" => Some(FileFormat::Usdz),
+            "abc" => Some(FileFormat::Abc),
+            "step" | "stp" => Some(FileFormat::Step),
+            "iges" | "igs" => Some(FileFormat::Iges),
+            "3mf" => Some(FileFormat::ThreeMf),
+            "off" => Some(FileFormat::Off),
 
             _ => None,
         }
@@ -356,6 +462,48 @@ impl FileFormat {
             return Some(FileFormat::Ogg);
         }
 
+        // ZIP (including DOCX / PPTX / XLSX / EPUB): PK\x03\x04 or PK\x05\x06
+        if header.starts_with(&[0x50, 0x4B, 0x03, 0x04])
+            || header.starts_with(&[0x50, 0x4B, 0x05, 0x06])
+        {
+            return Some(FileFormat::Zip);
+        }
+
+        // 7Z: 37 7A BC AF 27 1C
+        if header.starts_with(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) {
+            return Some(FileFormat::SevenZip);
+        }
+
+        // RAR: Rar!\x1A\x07
+        if header.starts_with(b"Rar!\x1A\x07") {
+            return Some(FileFormat::Rar);
+        }
+
+        // GZ: 1F 8B
+        if header.starts_with(&[0x1F, 0x8B]) {
+            return Some(FileFormat::Gz);
+        }
+
+        // BZ2: BZh
+        if header.starts_with(b"BZh") {
+            return Some(FileFormat::Bz2);
+        }
+
+        // XZ: \xFD7zXZ\x00
+        if header.starts_with(&[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]) {
+            return Some(FileFormat::Xz);
+        }
+
+        // ZST: 28 B5 2F FD
+        if header.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
+            return Some(FileFormat::Zst);
+        }
+
+        // glTF Binary (GLB): glTF
+        if header.starts_with(b"glTF") {
+            return Some(FileFormat::Glb);
+        }
+
         None
     }
 
@@ -465,16 +613,62 @@ impl FileFormat {
             FileFormat::M4a => "m4a",
             FileFormat::Ogg => "ogg",
             FileFormat::Opus => "opus",
+            FileFormat::Aiff => "aiff",
+            FileFormat::Wma => "wma",
 
             FileFormat::Csv => "csv",
             FileFormat::Xlsx => "xlsx",
-            FileFormat::Json => "json",
+            FileFormat::Xls => "xls",
+            FileFormat::Xlsm => "xlsm",
+            FileFormat::Ods => "ods",
             FileFormat::Tsv => "tsv",
+
+            FileFormat::Json => "json",
+            FileFormat::Xml => "xml",
+            FileFormat::Yaml => "yaml",
+            FileFormat::Toml => "toml",
+            FileFormat::Ndjson => "ndjson",
 
             FileFormat::Pdf => "pdf",
             FileFormat::Docx => "docx",
+            FileFormat::Doc => "doc",
+            FileFormat::Odt => "odt",
+            FileFormat::Rtf => "rtf",
             FileFormat::Txt => "txt",
             FileFormat::Html => "html",
+            FileFormat::Md => "md",
+            FileFormat::Epub => "epub",
+
+            FileFormat::Pptx => "pptx",
+            FileFormat::Ppt => "ppt",
+            FileFormat::Odp => "odp",
+            FileFormat::Ppsx => "ppsx",
+            FileFormat::Pps => "pps",
+
+            FileFormat::Zip => "zip",
+            FileFormat::SevenZip => "7z",
+            FileFormat::Rar => "rar",
+            FileFormat::Tar => "tar",
+            FileFormat::Gz => "gz",
+            FileFormat::Bz2 => "bz2",
+            FileFormat::Xz => "xz",
+            FileFormat::Zst => "zst",
+
+            FileFormat::Glb => "glb",
+            FileFormat::Gltf => "gltf",
+            FileFormat::Obj => "obj",
+            FileFormat::Fbx => "fbx",
+            FileFormat::Stl => "stl",
+            FileFormat::Ply => "ply",
+            FileFormat::Dae => "dae",
+            FileFormat::ThreeDs => "3ds",
+            FileFormat::Usd => "usd",
+            FileFormat::Usdz => "usdz",
+            FileFormat::Abc => "abc",
+            FileFormat::Step => "step",
+            FileFormat::Iges => "iges",
+            FileFormat::ThreeMf => "3mf",
+            FileFormat::Off => "off",
         }
     }
 
@@ -559,16 +753,62 @@ impl FileFormat {
             FileFormat::M4a => "M4A",
             FileFormat::Ogg => "OGG",
             FileFormat::Opus => "OPUS",
+            FileFormat::Aiff => "AIFF",
+            FileFormat::Wma => "WMA",
 
             FileFormat::Csv => "CSV",
             FileFormat::Xlsx => "XLSX",
-            FileFormat::Json => "JSON",
+            FileFormat::Xls => "XLS",
+            FileFormat::Xlsm => "XLSM",
+            FileFormat::Ods => "ODS",
             FileFormat::Tsv => "TSV",
+
+            FileFormat::Json => "JSON",
+            FileFormat::Xml => "XML",
+            FileFormat::Yaml => "YAML",
+            FileFormat::Toml => "TOML",
+            FileFormat::Ndjson => "NDJSON",
 
             FileFormat::Pdf => "PDF",
             FileFormat::Docx => "DOCX",
+            FileFormat::Doc => "DOC",
+            FileFormat::Odt => "ODT",
+            FileFormat::Rtf => "RTF",
             FileFormat::Txt => "TXT",
             FileFormat::Html => "HTML",
+            FileFormat::Md => "MD",
+            FileFormat::Epub => "EPUB",
+
+            FileFormat::Pptx => "PPTX",
+            FileFormat::Ppt => "PPT",
+            FileFormat::Odp => "ODP",
+            FileFormat::Ppsx => "PPSX",
+            FileFormat::Pps => "PPS",
+
+            FileFormat::Zip => "ZIP",
+            FileFormat::SevenZip => "7Z",
+            FileFormat::Rar => "RAR",
+            FileFormat::Tar => "TAR",
+            FileFormat::Gz => "GZ",
+            FileFormat::Bz2 => "BZ2",
+            FileFormat::Xz => "XZ",
+            FileFormat::Zst => "ZST",
+
+            FileFormat::Glb => "GLB",
+            FileFormat::Gltf => "GLTF",
+            FileFormat::Obj => "OBJ",
+            FileFormat::Fbx => "FBX",
+            FileFormat::Stl => "STL",
+            FileFormat::Ply => "PLY",
+            FileFormat::Dae => "DAE",
+            FileFormat::ThreeDs => "3DS",
+            FileFormat::Usd => "USD",
+            FileFormat::Usdz => "USDZ",
+            FileFormat::Abc => "ABC",
+            FileFormat::Step => "STEP",
+            FileFormat::Iges => "IGES",
+            FileFormat::ThreeMf => "3MF",
+            FileFormat::Off => "OFF",
         }
     }
 
@@ -650,15 +890,63 @@ impl FileFormat {
             | FileFormat::Aac
             | FileFormat::M4a
             | FileFormat::Ogg
-            | FileFormat::Opus => FormatCategory::Audio,
+            | FileFormat::Opus
+            | FileFormat::Aiff
+            | FileFormat::Wma => FormatCategory::Audio,
 
-            FileFormat::Csv | FileFormat::Xlsx | FileFormat::Tsv => FormatCategory::Spreadsheet,
+            FileFormat::Csv
+            | FileFormat::Xlsx
+            | FileFormat::Xls
+            | FileFormat::Xlsm
+            | FileFormat::Ods
+            | FileFormat::Tsv => FormatCategory::Spreadsheet,
 
-            FileFormat::Json => FormatCategory::Data,
+            FileFormat::Json
+            | FileFormat::Xml
+            | FileFormat::Yaml
+            | FileFormat::Toml
+            | FileFormat::Ndjson => FormatCategory::Data,
 
-            FileFormat::Pdf | FileFormat::Docx | FileFormat::Txt | FileFormat::Html => {
-                FormatCategory::Document
-            }
+            FileFormat::Pdf
+            | FileFormat::Docx
+            | FileFormat::Doc
+            | FileFormat::Odt
+            | FileFormat::Rtf
+            | FileFormat::Txt
+            | FileFormat::Html
+            | FileFormat::Md
+            | FileFormat::Epub => FormatCategory::Document,
+
+            FileFormat::Pptx
+            | FileFormat::Ppt
+            | FileFormat::Odp
+            | FileFormat::Ppsx
+            | FileFormat::Pps => FormatCategory::Presentation,
+
+            FileFormat::Zip
+            | FileFormat::SevenZip
+            | FileFormat::Rar
+            | FileFormat::Tar
+            | FileFormat::Gz
+            | FileFormat::Bz2
+            | FileFormat::Xz
+            | FileFormat::Zst => FormatCategory::Archive,
+
+            FileFormat::Glb
+            | FileFormat::Gltf
+            | FileFormat::Obj
+            | FileFormat::Fbx
+            | FileFormat::Stl
+            | FileFormat::Ply
+            | FileFormat::Dae
+            | FileFormat::ThreeDs
+            | FileFormat::Usd
+            | FileFormat::Usdz
+            | FileFormat::Abc
+            | FileFormat::Step
+            | FileFormat::Iges
+            | FileFormat::ThreeMf
+            | FileFormat::Off => FormatCategory::Model3D,
         }
     }
 
@@ -683,6 +971,30 @@ impl FileFormat {
 
     pub fn is_audio(&self) -> bool {
         self.category() == FormatCategory::Audio
+    }
+
+    pub fn is_document(&self) -> bool {
+        self.category() == FormatCategory::Document
+    }
+
+    pub fn is_presentation(&self) -> bool {
+        self.category() == FormatCategory::Presentation
+    }
+
+    pub fn is_spreadsheet(&self) -> bool {
+        self.category() == FormatCategory::Spreadsheet
+    }
+
+    pub fn is_data(&self) -> bool {
+        self.category() == FormatCategory::Data
+    }
+
+    pub fn is_archive(&self) -> bool {
+        self.category() == FormatCategory::Archive
+    }
+
+    pub fn is_3d(&self) -> bool {
+        self.category() == FormatCategory::Model3D
     }
 
     /// Whether this format inherently supports alpha transparency.
@@ -733,6 +1045,15 @@ mod tests {
         assert_eq!(FileFormat::from_extension("jxl"), Some(FileFormat::Jxl));
         assert_eq!(FileFormat::from_extension("psd"), Some(FileFormat::Psd));
         assert_eq!(FileFormat::from_extension("cbz"), Some(FileFormat::Cbz));
+        assert_eq!(FileFormat::from_extension("pdf"), Some(FileFormat::Pdf));
+        assert_eq!(FileFormat::from_extension("docx"), Some(FileFormat::Docx));
+        assert_eq!(FileFormat::from_extension("pptx"), Some(FileFormat::Pptx));
+        assert_eq!(FileFormat::from_extension("xlsx"), Some(FileFormat::Xlsx));
+        assert_eq!(FileFormat::from_extension("zip"), Some(FileFormat::Zip));
+        assert_eq!(FileFormat::from_extension("7z"), Some(FileFormat::SevenZip));
+        assert_eq!(FileFormat::from_extension("tar"), Some(FileFormat::Tar));
+        assert_eq!(FileFormat::from_extension("glb"), Some(FileFormat::Glb));
+        assert_eq!(FileFormat::from_extension("obj"), Some(FileFormat::Obj));
         assert_eq!(FileFormat::from_extension("canon"), None);
         assert_eq!(FileFormat::from_extension("nikon"), None);
         assert_eq!(FileFormat::from_extension("sony"), None);
@@ -746,6 +1067,12 @@ mod tests {
         assert_eq!(FileFormat::from_path(p2), Some(FileFormat::Svg));
         let p3 = Path::new("C:/test/raw_photo.CR2");
         assert_eq!(FileFormat::from_path(p3), Some(FileFormat::Cr2));
+        let p4 = Path::new("D:/docs/report.pdf");
+        assert_eq!(FileFormat::from_path(p4), Some(FileFormat::Pdf));
+        let p5 = Path::new("D:/archives/bundle.7z");
+        assert_eq!(FileFormat::from_path(p5), Some(FileFormat::SevenZip));
+        let p6 = Path::new("E:/models/mesh.glb");
+        assert_eq!(FileFormat::from_path(p6), Some(FileFormat::Glb));
     }
 
     #[test]
@@ -758,5 +1085,17 @@ mod tests {
 
         let gif_header = b"GIF89a...";
         assert_eq!(FileFormat::sniff_magic_bytes(gif_header), Some(FileFormat::Gif));
+
+        let pdf_header = b"%PDF-1.7...";
+        assert_eq!(FileFormat::sniff_magic_bytes(pdf_header), Some(FileFormat::Pdf));
+
+        let zip_header = [0x50, 0x4B, 0x03, 0x04, 0x14, 0x00];
+        assert_eq!(FileFormat::sniff_magic_bytes(&zip_header), Some(FileFormat::Zip));
+
+        let seven_z_header = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
+        assert_eq!(FileFormat::sniff_magic_bytes(&seven_z_header), Some(FileFormat::SevenZip));
+
+        let glb_header = b"glTF\x02\x00\x00\x00";
+        assert_eq!(FileFormat::sniff_magic_bytes(glb_header), Some(FileFormat::Glb));
     }
 }

@@ -79,16 +79,54 @@ pub fn format_visual_meta(fmt: FileFormat) -> (&'static str, Color, &'static str
         FileFormat::M4a => ("AUD", Color::from_rgb_u8(99, 102, 241), "🎶"),
         FileFormat::Ogg => ("AUD", Color::from_rgb_u8(244, 63, 94), "🎙️"),
         FileFormat::Opus => ("AUD", Color::from_rgb_u8(139, 92, 246), "🎤"),
+        FileFormat::Aiff => ("AUD", Color::from_rgb_u8(16, 185, 129), "🎼"),
+        FileFormat::Wma => ("AUD", Color::from_rgb_u8(59, 130, 246), "📻"),
 
         FileFormat::Csv => ("DATA", Color::from_rgb_u8(16, 185, 129), "📊"),
-        FileFormat::Xlsx => ("SHEET", Color::from_rgb_u8(34, 197, 94), "📈"),
-        FileFormat::Json => ("DATA", Color::from_rgb_u8(245, 158, 11), "📄"),
+        FileFormat::Xlsx | FileFormat::Xls | FileFormat::Xlsm | FileFormat::Ods => {
+            ("SHEET", Color::from_rgb_u8(34, 197, 94), "📈")
+        }
+        FileFormat::Json | FileFormat::Xml | FileFormat::Yaml | FileFormat::Toml | FileFormat::Ndjson => {
+            ("DATA", Color::from_rgb_u8(245, 158, 11), "📄")
+        }
         FileFormat::Tsv => ("DATA", Color::from_rgb_u8(20, 184, 166), "📋"),
 
         FileFormat::Pdf => ("DOC", Color::from_rgb_u8(239, 68, 68), "📕"),
-        FileFormat::Docx => ("DOC", Color::from_rgb_u8(59, 130, 246), "📘"),
-        FileFormat::Txt => ("DOC", Color::from_rgb_u8(148, 163, 184), "📝"),
+        FileFormat::Docx | FileFormat::Doc | FileFormat::Odt | FileFormat::Rtf => {
+            ("DOC", Color::from_rgb_u8(59, 130, 246), "📘")
+        }
+        FileFormat::Txt | FileFormat::Md => ("DOC", Color::from_rgb_u8(148, 163, 184), "📝"),
         FileFormat::Html => ("WEB", Color::from_rgb_u8(249, 115, 22), "🌐"),
+        FileFormat::Epub => ("BOOK", Color::from_rgb_u8(168, 85, 247), "📚"),
+
+        FileFormat::Pptx | FileFormat::Ppt | FileFormat::Odp | FileFormat::Ppsx | FileFormat::Pps => {
+            ("PRES", Color::from_rgb_u8(234, 88, 12), "📽️")
+        }
+
+        FileFormat::Zip
+        | FileFormat::SevenZip
+        | FileFormat::Rar
+        | FileFormat::Tar
+        | FileFormat::Gz
+        | FileFormat::Bz2
+        | FileFormat::Xz
+        | FileFormat::Zst => ("ARCH", Color::from_rgb_u8(217, 119, 6), "📦"),
+
+        FileFormat::Glb
+        | FileFormat::Gltf
+        | FileFormat::Obj
+        | FileFormat::Fbx
+        | FileFormat::Stl
+        | FileFormat::Ply
+        | FileFormat::Dae
+        | FileFormat::ThreeDs
+        | FileFormat::Usd
+        | FileFormat::Usdz
+        | FileFormat::Abc
+        | FileFormat::Step
+        | FileFormat::Iges
+        | FileFormat::ThreeMf
+        | FileFormat::Off => ("3D", Color::from_rgb_u8(147, 51, 234), "🧊"),
     }
 }
 
