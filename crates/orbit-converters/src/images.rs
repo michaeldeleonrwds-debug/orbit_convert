@@ -98,6 +98,7 @@ impl Converter for ImageConverter {
             FileFormat::Ico,
             FileFormat::Bmp,
             FileFormat::Tiff,
+            FileFormat::Gif,
         ];
         from != to && raster_formats.contains(&from) && raster_formats.contains(&to)
     }
@@ -177,10 +178,15 @@ impl Converter for ImageConverter {
                     .save_with_format(output, ImageFormat::Tiff)
                     .map_err(|e| ConversionError::ProcessingError(format!("TIFF encoding failed: {}", e)))?;
             }
-            FileFormat::Svg => {
+            FileFormat::Gif => {
+                dyn_img
+                    .save_with_format(output, ImageFormat::Gif)
+                    .map_err(|e| ConversionError::ProcessingError(format!("GIF encoding failed: {}", e)))?;
+            }
+            other => {
                 return Err(ConversionError::UnsupportedConversion {
                     from: FileFormat::from_path(input).unwrap_or(FileFormat::Png),
-                    to: FileFormat::Svg,
+                    to: other,
                 });
             }
         }

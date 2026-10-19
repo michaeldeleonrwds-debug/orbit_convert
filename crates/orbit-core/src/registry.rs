@@ -105,6 +105,26 @@ impl ConversionRegistry {
             FileFormat::Ico,
             FileFormat::Bmp,
             FileFormat::Tiff,
+            FileFormat::Gif,
+            FileFormat::Mp4,
+            FileFormat::Mov,
+            FileFormat::Mkv,
+            FileFormat::Avi,
+            FileFormat::Webm,
+            FileFormat::Mp3,
+            FileFormat::Wav,
+            FileFormat::Flac,
+            FileFormat::Aac,
+            FileFormat::M4a,
+            FileFormat::Ogg,
+            FileFormat::Csv,
+            FileFormat::Xlsx,
+            FileFormat::Json,
+            FileFormat::Tsv,
+            FileFormat::Pdf,
+            FileFormat::Docx,
+            FileFormat::Txt,
+            FileFormat::Html,
         ];
 
         for &from in &all_formats {
@@ -127,7 +147,6 @@ impl ConversionRegistry {
             .map(|set| set.iter().copied().collect())
             .unwrap_or_default();
 
-        // Consistent ordering for radial wheel UX: PNG, JPG, WebP, ICO, SVG, etc.
         targets.sort_by_key(|fmt| match fmt {
             FileFormat::Png => 1,
             FileFormat::Jpg => 2,
@@ -136,6 +155,26 @@ impl ConversionRegistry {
             FileFormat::Svg => 5,
             FileFormat::Bmp => 6,
             FileFormat::Tiff => 7,
+            FileFormat::Gif => 8,
+            FileFormat::Mp3 => 10,
+            FileFormat::Wav => 11,
+            FileFormat::Aac => 12,
+            FileFormat::Flac => 13,
+            FileFormat::M4a => 14,
+            FileFormat::Ogg => 15,
+            FileFormat::Mp4 => 20,
+            FileFormat::Webm => 21,
+            FileFormat::Mov => 22,
+            FileFormat::Mkv => 23,
+            FileFormat::Avi => 24,
+            FileFormat::Json => 30,
+            FileFormat::Csv => 31,
+            FileFormat::Xlsx => 32,
+            FileFormat::Tsv => 33,
+            FileFormat::Pdf => 40,
+            FileFormat::Docx => 41,
+            FileFormat::Txt => 42,
+            FileFormat::Html => 43,
         });
 
         targets

@@ -1,3 +1,5 @@
+pub mod data;
+pub mod ffmpeg;
 pub mod images;
 pub mod svg;
 
@@ -7,4 +9,6 @@ use std::sync::Arc;
 pub fn register_all_converters(registry: &mut ConversionRegistry) {
     registry.register(Arc::new(images::ImageConverter::new()));
     registry.register(Arc::new(svg::SvgConverter::new()));
+    registry.register(Arc::new(ffmpeg::FfmpegConverter::new()));
+    registry.register(Arc::new(data::DataConverter::new()));
 }

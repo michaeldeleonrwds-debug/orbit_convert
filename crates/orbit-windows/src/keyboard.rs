@@ -2,13 +2,19 @@ use crossbeam_channel::{Receiver, Sender};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tracing::info;
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+    PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_ESCAPE, VK_LMENU, VK_MENU, VK_RMENU, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetForegroundWindow, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
-    KBDLLHOOKSTRUCT, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, GetAncestor, GetClassNameW, GetForegroundWindow,
+    GetWindowThreadProcessId, SetWindowsHookExW, UnhookWindowsHookEx, WindowFromPoint,
+    GA_ROOT, HHOOK, KBDLLHOOKSTRUCT, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+    WM_SYSKEYUP,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,24 +142,75 @@ impl Drop for KeyboardHookManager {
     }
 }
 
+/// Checks whether an HWND belongs to Windows File Explorer or Desktop.
+pub fn is_explorer_hwnd(hwnd: HWND) -> bool {
+    if hwnd.0.is_null() {
+        return false;
+    }
+    unsafe {
+        let root = GetAncestor(hwnd, GA_ROOT);
+        let check_hwnd = if root.0.is_null() { hwnd } else { root };
+
+        let mut class_buf = [0u16; 256];
+        let len = GetClassNameW(check_hwnd, &mut class_buf);
+        if len > 0 {
+            let class_name = String::from_utf16_lossy(&class_buf[..len as usize]);
+            if matches!(
+                class_name.as_str(),
+                "CabinetWClass" | "WorkerW" | "Progman" | "ExploreWClass" | "ShellTabWindowClass"
+            ) {
+                return true;
+            }
+        }
+
+        // Check process executable name
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(check_hwnd, Some(&mut pid));
+        if pid > 0 {
+            if let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+                let mut path_buf = [0u16; 1024];
+                let mut size = path_buf.len() as u32;
+                if QueryFullProcessImageNameW(
+                    handle,
+                    PROCESS_NAME_FORMAT(0),
+                    windows::core::PWSTR(path_buf.as_mut_ptr()),
+                    &mut size,
+                )
+                .is_ok()
+                {
+                    let path_str = String::from_utf16_lossy(&path_buf[..size as usize]);
+                    let is_explorer = path_str.to_ascii_lowercase().ends_with("explorer.exe");
+                    let _ = windows::Win32::Foundation::CloseHandle(handle);
+                    return is_explorer;
+                }
+                let _ = windows::Win32::Foundation::CloseHandle(handle);
+            }
+        }
+        false
+    }
+}
+
 /// Helper to check whether the current foreground window is Explorer or Desktop.
 pub fn is_explorer_or_desktop_active() -> bool {
     unsafe {
         let hwnd = GetForegroundWindow();
-        if hwnd.0.is_null() {
-            return false;
+        is_explorer_hwnd(hwnd)
+    }
+}
+
+/// Robust check verifying if either the window directly under cursor or the active window is Explorer/Desktop.
+pub fn is_cursor_or_foreground_explorer(cursor_x: f32, cursor_y: f32) -> bool {
+    unsafe {
+        let pt = POINT {
+            x: cursor_x.round() as i32,
+            y: cursor_y.round() as i32,
+        };
+        let hwnd_under_cursor = WindowFromPoint(pt);
+        if is_explorer_hwnd(hwnd_under_cursor) {
+            return true;
         }
 
-        let mut class_buf = [0u16; 256];
-        let len = windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut class_buf);
-        if len > 0 {
-            let class_name = String::from_utf16_lossy(&class_buf[..len as usize]);
-            matches!(
-                class_name.as_str(),
-                "CabinetWClass" | "WorkerW" | "Progman" | "ExploreWClass"
-            )
-        } else {
-            false
-        }
+        let fg = GetForegroundWindow();
+        is_explorer_hwnd(fg)
     }
 }

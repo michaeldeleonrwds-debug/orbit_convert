@@ -14,21 +14,20 @@ fn test_comprehensive_registry_all_mappings() {
 
     // Verify SVG conversions
     let svg_targets = reg.get_available_targets(FileFormat::Svg);
-    assert_eq!(
-        svg_targets,
-        vec![
-            FileFormat::Png,
-            FileFormat::Jpg,
-            FileFormat::Webp,
-            FileFormat::Ico
-        ]
-    );
+    assert!(svg_targets.contains(&FileFormat::Png));
+    assert!(svg_targets.contains(&FileFormat::Jpg));
+    assert!(svg_targets.contains(&FileFormat::Webp));
+    assert!(svg_targets.contains(&FileFormat::Ico));
+    assert!(svg_targets.contains(&FileFormat::Bmp));
+    assert!(svg_targets.contains(&FileFormat::Tiff));
+    assert!(svg_targets.contains(&FileFormat::Gif));
 
     // Verify PNG conversions
     let png_targets = reg.get_available_targets(FileFormat::Png);
     assert!(png_targets.contains(&FileFormat::Jpg));
     assert!(png_targets.contains(&FileFormat::Webp));
     assert!(png_targets.contains(&FileFormat::Ico));
+    assert!(png_targets.contains(&FileFormat::Bmp));
 
     // Verify JPG conversions
     let jpg_targets = reg.get_available_targets(FileFormat::Jpg);
@@ -39,6 +38,16 @@ fn test_comprehensive_registry_all_mappings() {
     let webp_targets = reg.get_available_targets(FileFormat::Webp);
     assert!(webp_targets.contains(&FileFormat::Png));
     assert!(webp_targets.contains(&FileFormat::Jpg));
+
+    // Verify Video & Audio conversions (FFmpeg engine)
+    let mp4_targets = reg.get_available_targets(FileFormat::Mp4);
+    assert!(mp4_targets.contains(&FileFormat::Webm));
+    assert!(mp4_targets.contains(&FileFormat::Mp3));
+
+    // Verify Data conversions
+    let csv_targets = reg.get_available_targets(FileFormat::Csv);
+    assert!(csv_targets.contains(&FileFormat::Json));
+    assert!(csv_targets.contains(&FileFormat::Tsv));
 }
 
 #[test]

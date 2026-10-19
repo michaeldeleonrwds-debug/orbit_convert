@@ -41,7 +41,7 @@ impl UiAutomationClient {
     }
 
     /// Hit-tests the UI element directly under the cursor coordinates.
-    /// Traverses up to the parent ListItem or DataItem if a sub-control (like text or icon) was clicked.
+    /// Traverses up to find any candidate item, list row, text, or file icon.
     pub fn get_hovered_element(&self, pt: POINT) -> Result<Option<HoveredElementInfo>> {
         unsafe {
             let element = match self.automation.ElementFromPoint(pt) {
@@ -52,30 +52,45 @@ impl UiAutomationClient {
                 }
             };
 
-            // Inspect element or traverse up to find ListItem/DataItem
             let walker = self.automation.ControlViewWalker()?;
             let mut current = element;
 
-            for _ in 0..6 {
+            let mut best_name = String::new();
+            let mut best_type = 0;
+            let mut best_rect = RECT::default();
+
+            for _depth in 0..8 {
                 let control_type = current
                     .CurrentControlType()
                     .unwrap_or(UIA_CONTROLTYPE_ID(0));
 
-                if control_type == UIA_ListItemControlTypeId
-                    || control_type == UIA_DataItemControlTypeId
-                {
-                    let name = current
-                        .CurrentName()
-                        .map(|b| b.to_string())
-                        .unwrap_or_default();
+                let name = current
+                    .CurrentName()
+                    .map(|b| b.to_string())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
 
-                    let bounding_rect = current.CurrentBoundingRectangle().unwrap_or_default();
+                let rect = current.CurrentBoundingRectangle().unwrap_or_default();
 
-                    return Ok(Some(HoveredElementInfo {
-                        name,
-                        control_type: control_type.0,
-                        bounding_rect,
-                    }));
+                if !name.is_empty() {
+                    // Exact ListItem or DataItem is authoritative
+                    if control_type == UIA_ListItemControlTypeId
+                        || control_type == UIA_DataItemControlTypeId
+                    {
+                        return Ok(Some(HoveredElementInfo {
+                            name,
+                            control_type: control_type.0,
+                            bounding_rect: rect,
+                        }));
+                    }
+
+                    // Otherwise save candidate name (especially if it has an extension)
+                    if best_name.is_empty() || name.contains('.') {
+                        best_name = name;
+                        best_type = control_type.0;
+                        best_rect = rect;
+                    }
                 }
 
                 // Walk to parent
@@ -83,6 +98,14 @@ impl UiAutomationClient {
                     Ok(parent) => current = parent,
                     Err(_) => break,
                 }
+            }
+
+            if !best_name.is_empty() {
+                return Ok(Some(HoveredElementInfo {
+                    name: best_name,
+                    control_type: best_type,
+                    bounding_rect: best_rect,
+                }));
             }
 
             Ok(None)

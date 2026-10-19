@@ -1,5 +1,6 @@
 use crate::automation::UiAutomationClient;
 use crate::cursor::Point;
+use crate::keyboard::is_explorer_hwnd;
 use orbit_core::formats::FileFormat;
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -10,12 +11,12 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Shell::{
-    FOLDERID_Desktop, IFolderView2, IShellBrowser, IShellItem, IShellView, IShellWindows,
-    SHCreateItemFromIDList, SHGetKnownFolderPath, ShellWindows, KNOWN_FOLDER_FLAG,
+    FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellView,
+    IShellWindows, SHCreateItemFromIDList, SHGetKnownFolderPath, ShellWindows, KNOWN_FOLDER_FLAG,
     SIGDN_FILESYSPATH, SIGDN_NORMALDISPLAY, SVGIO_ALLVIEW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetAncestor, GetClassNameW, WindowFromPoint, GA_ROOT,
+    GetAncestor, GetClassNameW, GetWindowRect, WindowFromPoint, GA_ROOT,
 };
 
 // SID_STopLevelBrowser GUID: {4C96BE40-915C-11CF-99D3-00AA004AE837}
@@ -120,16 +121,13 @@ impl ExplorerResolver {
             };
             report.window_class = class_name.clone();
 
-            let is_explorer = matches!(
-                class_name.as_str(),
-                "CabinetWClass" | "WorkerW" | "Progman" | "ExploreWClass"
-            );
+            let is_explorer = is_explorer_hwnd(hwnd) || is_explorer_hwnd(root_hwnd);
             report.is_explorer_or_desktop = is_explorer;
 
             if !is_explorer {
                 report.rejection_reason = Some(format!(
-                    "Window class '{}' is not File Explorer or Desktop",
-                    class_name
+                    "Window class '{}' (HWND 0x{:X}) is not File Explorer or Desktop",
+                    class_name, root_hwnd.0 as isize
                 ));
                 return report;
             }
@@ -162,9 +160,9 @@ impl ExplorerResolver {
                 return report;
             }
 
-            // Resolve folder and items through Shell COM
+            // Check if on Desktop
             if class_name == "Progman" || class_name == "WorkerW" {
-                // Desktop path
+                // User Desktop path
                 if let Ok(desktop_path_pwstr) =
                     SHGetKnownFolderPath(&FOLDERID_Desktop, KNOWN_FOLDER_FLAG(0), None)
                 {
@@ -175,13 +173,28 @@ impl ExplorerResolver {
 
                     Self::match_file_in_folder(&desktop_folder, &target_name, &mut report);
                 }
+
+                // Public Desktop fallback
+                if report.resolved_item_path.is_none() {
+                    if let Ok(pub_pwstr) =
+                        SHGetKnownFolderPath(&FOLDERID_PublicDesktop, KNOWN_FOLDER_FLAG(0), None)
+                    {
+                        let pub_str = pub_pwstr.to_string().unwrap_or_default();
+                        CoTaskMemFree(Some(pub_pwstr.as_ptr() as *const _));
+                        let pub_folder = PathBuf::from(pub_str);
+                        Self::match_file_in_folder(&pub_folder, &target_name, &mut report);
+                    }
+                }
             } else {
                 // Regular File Explorer window via IShellWindows
-                Self::resolve_via_shell_windows(root_hwnd, &target_name, &mut report);
+                Self::resolve_via_shell_windows(root_hwnd, hwnd, pt, &target_name, &mut report);
             }
 
             if report.resolved_item_path.is_none() && report.rejection_reason.is_none() {
-                report.rejection_reason = Some("Could not resolve item to filesystem path".into());
+                report.rejection_reason = Some(format!(
+                    "Could not resolve item '{}' to filesystem path",
+                    target_name
+                ));
             }
 
             report
@@ -189,7 +202,9 @@ impl ExplorerResolver {
     }
 
     unsafe fn resolve_via_shell_windows(
-        target_hwnd: HWND,
+        target_root_hwnd: HWND,
+        target_child_hwnd: HWND,
+        cursor_pt: POINT,
         target_name: &str,
         report: &mut ExplorerDiagnosticReport,
     ) {
@@ -219,12 +234,27 @@ impl ExplorerResolver {
                 Err(_) => continue,
             };
 
-            // Check if this window corresponds to our target HWND
-            if let Ok(window_hwnd) = shell_browser.GetWindow() {
+            // Check if this window corresponds to our target window or if cursor is inside its bounds
+            let is_match = if let Ok(window_hwnd) = shell_browser.GetWindow() {
                 let browser_root = GetAncestor(window_hwnd, GA_ROOT);
-                if browser_root != target_hwnd && window_hwnd != target_hwnd {
-                    continue;
-                }
+                let mut rect = windows::Win32::Foundation::RECT::default();
+                let _ = GetWindowRect(window_hwnd, &mut rect);
+                let cursor_in_rect = cursor_pt.x >= rect.left
+                    && cursor_pt.x <= rect.right
+                    && cursor_pt.y >= rect.top
+                    && cursor_pt.y <= rect.bottom;
+
+                browser_root == target_root_hwnd
+                    || window_hwnd == target_root_hwnd
+                    || window_hwnd == target_child_hwnd
+                    || browser_root == target_child_hwnd
+                    || cursor_in_rect
+            } else {
+                false
+            };
+
+            if !is_match {
+                continue;
             }
 
             let shell_view: IShellView = match shell_browser.QueryActiveShellView() {
@@ -303,9 +333,11 @@ impl ExplorerResolver {
                         }
                     }
 
-                    // Fallback search directly in folder
+                    // Direct filesystem fallback in the folder
                     Self::match_file_in_folder(&folder_path, target_name, report);
-                    return;
+                    if report.resolved_item_path.is_some() {
+                        return;
+                    }
                 }
             }
         }

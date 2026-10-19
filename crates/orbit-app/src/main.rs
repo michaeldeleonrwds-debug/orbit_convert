@@ -15,14 +15,16 @@ use orbit_windows::cursor::{
 };
 use orbit_windows::dialogs::{pick_file, pick_folder};
 use orbit_windows::explorer::{ExplorerDiagnosticReport, ExplorerResolver};
-use orbit_windows::keyboard::{is_explorer_or_desktop_active, KeyboardHookManager, RawKeyEvent};
+use orbit_windows::keyboard::{
+    is_cursor_or_foreground_explorer, KeyboardHookManager, RawKeyEvent,
+};
 use slint::{ComponentHandle, LogicalPosition, ModelRc, VecModel};
 use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppState {
@@ -155,6 +157,9 @@ fn main() {
 
         main_window.set_folders(make_folders_model(&initial_config.folders));
         main_window.set_presets(make_presets_model(&initial_config.presets));
+        main_window.set_diag_ffmpeg_installed(
+            orbit_converters::ffmpeg::FfmpegConverter::check_ffmpeg_available(),
+        );
     }
 
     // Set notification callback for completed/failed jobs
@@ -497,10 +502,45 @@ fn main() {
 
     {
         let resolver_for_diag = resolver.clone();
+        let m_weak = main_window.as_weak();
         main_window.on_run_diagnostics_clicked(move || {
             if let Ok(pt) = get_current_cursor_pos() {
                 let report = resolver_for_diag.diagnose_cursor(pt);
                 print_diagnostic_report(&report);
+
+                if let Some(m) = m_weak.upgrade() {
+                    m.set_diag_window_class(report.window_class.clone().into());
+                    m.set_diag_element_name(
+                        report
+                            .uia_element_name
+                            .clone()
+                            .unwrap_or_else(|| "None".to_string())
+                            .into(),
+                    );
+                    m.set_diag_resolved_path(
+                        report
+                            .resolved_item_path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "None".to_string())
+                            .into(),
+                    );
+                    m.set_diag_detected_format(
+                        report
+                            .detected_format
+                            .map(|f| f.display_label().to_string())
+                            .unwrap_or_else(|| "None".to_string())
+                            .into(),
+                    );
+                    m.set_diag_status(
+                        report
+                            .rejection_reason
+                            .clone()
+                            .unwrap_or_else(|| "Supported & Ready to Convert".to_string())
+                            .into(),
+                    );
+                }
+
                 let title = if report.rejection_reason.is_none() {
                     "OrbitConvert: Supported File"
                 } else {
@@ -620,6 +660,7 @@ fn main() {
         source_format: Option<FileFormat>,
         target_formats: Vec<FileFormat>,
         current_highlighted_index: i32,
+        is_preview: bool,
     }
 
     let interaction = Arc::new(Mutex::new(InteractionData {
@@ -629,7 +670,47 @@ fn main() {
         source_format: None,
         target_formats: Vec::new(),
         current_highlighted_index: -1,
+        is_preview: false,
     }));
+
+    // MainWindow Preview Wheel callback (accessible from Dashboard & Settings)
+    {
+        let wheel_for_preview = wheel.as_weak();
+        let interaction_for_preview = interaction.clone();
+        main_window.on_preview_wheel_clicked(move || {
+            if let Some(w) = wheel_for_preview.upgrade() {
+                let demo_targets = vec![
+                    FileFormat::Png,
+                    FileFormat::Jpg,
+                    FileFormat::Webp,
+                    FileFormat::Ico,
+                    FileFormat::Bmp,
+                    FileFormat::Gif,
+                ];
+                let (sectors, _) = build_wheel_sectors(180.0, 180.0, 120.0, &demo_targets);
+                w.set_source_ext("SVG".into());
+                w.set_source_name("sample_vector.svg".into());
+                w.set_sectors(sectors);
+                w.set_highlighted_index(-1);
+                w.set_status_text("Interactive Preview (Move mouse to highlight, Esc to close)".into());
+                w.set_is_preview(true);
+
+                let cur_pos = get_current_cursor_pos().unwrap_or(Point::new(600.0, 400.0));
+                let (wx, wy) = calculate_clamped_window_pos(cur_pos, 360.0, 360.0);
+                w.window().set_position(LogicalPosition::new(wx as f32, wy as f32));
+                let _ = w.show();
+
+                let mut data = interaction_for_preview.lock().unwrap();
+                data.state = AppState::WheelActive;
+                data.center_pos = Point::new(wx as f32 + 180.0, wy as f32 + 180.0);
+                data.source_path = None;
+                data.source_format = Some(FileFormat::Svg);
+                data.target_formats = demo_targets;
+                data.current_highlighted_index = -1;
+                data.is_preview = true;
+            }
+        });
+    }
 
     let timer = slint::Timer::default();
     let interaction_clone = interaction.clone();
@@ -648,55 +729,86 @@ fn main() {
                     RawKeyEvent::AltDown => {
                         let mut data = interaction_clone.lock().unwrap();
                         if data.state == AppState::Idle {
-                            // Verify active window is Explorer or Desktop
-                            if !is_explorer_or_desktop_active() {
-                                debug!("Alt pressed, but active window is not Explorer/Desktop");
+                            let cursor_pos = match get_current_cursor_pos() {
+                                Ok(pos) => pos,
+                                Err(e) => {
+                                    debug!("Could not get cursor position on AltDown: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            // Check whether cursor or foreground belongs to Explorer/Desktop
+                            if !is_cursor_or_foreground_explorer(cursor_pos.x, cursor_pos.y) {
+                                debug!(
+                                    x = cursor_pos.x,
+                                    y = cursor_pos.y,
+                                    "Alt pressed, but cursor/foreground window is not Explorer or Desktop"
+                                );
                                 continue;
                             }
 
-                            if let Ok(cursor_pos) = get_current_cursor_pos() {
-                                if let Some(resolved) =
-                                    resolver_clone.resolve_file_under_cursor(cursor_pos)
-                                {
-                                    let targets =
-                                        registry_clone.get_available_targets(resolved.format);
-                                    if !targets.is_empty() {
-                                        info!(
-                                            file = %resolved.path.display(),
-                                            format = %resolved.format,
-                                            targets = ?targets,
-                                            "Hovered supported file. Showing radial wheel."
-                                        );
+                            // Run cursor diagnosis
+                            let report = resolver_clone.diagnose_cursor(cursor_pos);
+                            info!(
+                                class = %report.window_class,
+                                is_explorer = report.is_explorer_or_desktop,
+                                element = ?report.uia_element_name,
+                                path = ?report.resolved_item_path,
+                                fmt = ?report.detected_format,
+                                reason = ?report.rejection_reason,
+                                "Explorer item inspection on AltDown"
+                            );
 
-                                        data.state = AppState::WheelActive;
-                                        data.center_pos = cursor_pos;
-                                        data.source_path = Some(resolved.path.clone());
-                                        data.source_format = Some(resolved.format);
-                                        data.target_formats = targets.clone();
-                                        data.current_highlighted_index = -1;
+                            if let (Some(ref item_path), Some(src_fmt)) =
+                                (&report.resolved_item_path, report.detected_format)
+                            {
+                                let targets = registry_clone.get_available_targets(src_fmt);
+                                if targets.is_empty() {
+                                    warn!(
+                                        format = %src_fmt,
+                                        path = %item_path.display(),
+                                        "Supported file detected but no target conversions available in registry"
+                                    );
+                                    continue;
+                                }
 
-                                        if let Some(w) = wheel_weak.upgrade() {
-                                            let (sectors, _) = build_wheel_sectors(
-                                                180.0,
-                                                180.0,
-                                                120.0,
-                                                &targets,
-                                            );
-                                            w.set_source_ext(resolved.format.display_label().into());
-                                            w.set_source_name(resolved.filename.into());
-                                            w.set_sectors(sectors);
-                                            w.set_highlighted_index(-1);
-                                            w.set_status_text("Drag cursor to format".into());
+                                info!(
+                                    file = %item_path.display(),
+                                    format = %src_fmt,
+                                    targets = ?targets,
+                                    "File resolved with valid conversion routes. Showing radial wheel."
+                                );
 
-                                            let (wx, wy) = calculate_clamped_window_pos(
-                                                cursor_pos, 380.0, 380.0,
-                                            );
-                                            w.window().set_position(LogicalPosition::new(
-                                                wx as f32, wy as f32,
-                                            ));
-                                            let _ = w.show();
-                                        }
-                                    }
+                                data.state = AppState::WheelActive;
+                                data.center_pos = cursor_pos;
+                                data.source_path = Some(item_path.clone());
+                                data.source_format = Some(src_fmt);
+                                data.target_formats = targets.clone();
+                                data.current_highlighted_index = -1;
+                                data.is_preview = false;
+
+                                if let Some(w) = wheel_weak.upgrade() {
+                                    let (sectors, _) =
+                                        build_wheel_sectors(180.0, 180.0, 120.0, &targets);
+                                    let fname = item_path
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().to_string())
+                                        .unwrap_or_default();
+
+                                    w.set_is_preview(false);
+                                    w.set_source_ext(src_fmt.display_label().into());
+                                    w.set_source_name(fname.into());
+                                    w.set_sectors(sectors);
+                                    w.set_highlighted_index(-1);
+                                    w.set_status_text("Move cursor to format, release Alt to convert".into());
+
+                                    let (wx, wy) = calculate_clamped_window_pos(
+                                        cursor_pos, 360.0, 360.0,
+                                    );
+                                    w.window().set_position(LogicalPosition::new(
+                                        wx as f32, wy as f32,
+                                    ));
+                                    let _ = w.show();
                                 }
                             }
                         }
@@ -708,34 +820,36 @@ fn main() {
                                 let _ = w.hide();
                             }
 
-                            let selected_idx = data.current_highlighted_index;
-                            if selected_idx >= 0
-                                && (selected_idx as usize) < data.target_formats.len()
-                            {
-                                let target_fmt = data.target_formats[selected_idx as usize];
-                                if let (Some(src_path), Some(src_fmt)) =
-                                    (&data.source_path, data.source_format)
+                            if !data.is_preview {
+                                let selected_idx = data.current_highlighted_index;
+                                if selected_idx >= 0
+                                    && (selected_idx as usize) < data.target_formats.len()
                                 {
-                                    info!(
-                                        source = %src_path.display(),
-                                        target = %target_fmt,
-                                        "Radial conversion initiated by Alt release"
-                                    );
+                                    let target_fmt = data.target_formats[selected_idx as usize];
+                                    if let (Some(src_path), Some(src_fmt)) =
+                                        (&data.source_path, data.source_format)
+                                    {
+                                        info!(
+                                            source = %src_path.display(),
+                                            target = %target_fmt,
+                                            "Radial conversion initiated by Alt release"
+                                        );
 
-                                    let custom_out = {
-                                        let cfg = config_for_wheel.lock().unwrap();
-                                        cfg.custom_output_dir.clone()
-                                    };
+                                        let custom_out = {
+                                            let cfg = config_for_wheel.lock().unwrap();
+                                            cfg.custom_output_dir.clone()
+                                        };
 
-                                    let _ = job_mgr_clone.submit(
-                                        src_path.clone(),
-                                        src_fmt,
-                                        target_fmt,
-                                        custom_out,
-                                    );
+                                        let _ = job_mgr_clone.submit(
+                                            src_path.clone(),
+                                            src_fmt,
+                                            target_fmt,
+                                            custom_out,
+                                        );
+                                    }
+                                } else {
+                                    debug!("Alt released in dead zone or outside; conversion cancelled");
                                 }
-                            } else {
-                                debug!("Alt released in dead zone or outside; conversion cancelled");
                             }
 
                             data.state = AppState::Idle;
@@ -764,8 +878,8 @@ fn main() {
                     let selected = calculate_selected_sector(
                         data.center_pos,
                         cur_pos,
-                        46.0,  // inner dead zone radius
-                        170.0, // outer radius
+                        72.5,  // inner dead zone radius (matches center hub radius)
+                        170.0, // outer radius (matches outer ring boundary)
                         num_sectors,
                     );
 
@@ -781,7 +895,7 @@ fn main() {
                                         .into(),
                                 );
                             } else {
-                                w.set_status_text("Drag cursor to format".into());
+                                w.set_status_text("Move cursor to format".into());
                             }
                         }
                     }

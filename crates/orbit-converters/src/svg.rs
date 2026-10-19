@@ -86,7 +86,13 @@ impl Converter for SvgConverter {
         from == FileFormat::Svg
             && matches!(
                 to,
-                FileFormat::Png | FileFormat::Jpg | FileFormat::Webp | FileFormat::Ico
+                FileFormat::Png
+                    | FileFormat::Jpg
+                    | FileFormat::Webp
+                    | FileFormat::Ico
+                    | FileFormat::Bmp
+                    | FileFormat::Tiff
+                    | FileFormat::Gif
             )
     }
 
@@ -175,6 +181,24 @@ impl Converter for SvgConverter {
             FileFormat::Ico => {
                 let dyn_img = DynamicImage::ImageRgba8(rgba_image);
                 ImageConverter::save_as_ico(&dyn_img, output, &options.ico_sizes)?;
+            }
+            FileFormat::Bmp => {
+                let dyn_img = DynamicImage::ImageRgba8(rgba_image);
+                dyn_img
+                    .save_with_format(output, image::ImageFormat::Bmp)
+                    .map_err(|e| ConversionError::ProcessingError(format!("BMP encoding failed: {}", e)))?;
+            }
+            FileFormat::Tiff => {
+                let dyn_img = DynamicImage::ImageRgba8(rgba_image);
+                dyn_img
+                    .save_with_format(output, image::ImageFormat::Tiff)
+                    .map_err(|e| ConversionError::ProcessingError(format!("TIFF encoding failed: {}", e)))?;
+            }
+            FileFormat::Gif => {
+                let dyn_img = DynamicImage::ImageRgba8(rgba_image);
+                dyn_img
+                    .save_with_format(output, image::ImageFormat::Gif)
+                    .map_err(|e| ConversionError::ProcessingError(format!("GIF encoding failed: {}", e)))?;
             }
             _ => {
                 return Err(ConversionError::UnsupportedConversion {

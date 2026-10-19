@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { RadialWheel, WheelSector } from "wheel.slint";
-import { Button, CheckBox, Slider, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { AppButton, SecondaryButton, DangerButton, StatusBadge, Card } from "components.slint";
+import { Slider, CheckBox } from "std-widgets.slint";
 
 export { RadialWheel, WheelSector }
 
@@ -39,13 +40,13 @@ export component MainWindow inherits Window {
     min_height: 700px;
     preferred_width: 1360px;
     preferred_height: 860px;
-    background: Theme.bg_root;
+    background: #0d0f17;
 
-    // Navigation state
-    in-out property <int> selected_nav: 0; // 0=Dashboard, 1=Convert, 2=History, 3=Folders, 4=Presets, 5=Settings
+    // Navigation state: 0=Dashboard, 1=Convert, 2=History, 3=Folders, 4=Presets, 5=Settings, 6=Diagnostics
+    in-out property <int> selected_nav: 0;
 
     // Dashboard & Settings state
-    in-out property <string> shortcut_label: "Hold Left Alt key";
+    in-out property <string> shortcut_label: "Hold Alt";
     in-out property <string> output_folder_label: "Same as source file";
     in-out property <int> jpeg_quality: 90;
     in-out property <float> svg_scale: 1.0;
@@ -54,14 +55,20 @@ export component MainWindow inherits Window {
     in-out property <bool> minimize_to_tray: true;
     in-out property <bool> service_active: true;
     in-out property <string> output_mode: "source";
+    in-out property <float> wheel_diameter: 340.0;
+    in-out property <float> dead_zone: 72.5;
 
-    // Folders model
+    // Diagnostics State
+    in-out property <string> diag_window_class: "N/A";
+    in-out property <string> diag_element_name: "None";
+    in-out property <string> diag_resolved_path: "None";
+    in-out property <string> diag_detected_format: "None";
+    in-out property <string> diag_status: "Ready";
+    in-out property <bool> diag_ffmpeg_installed: true;
+
+    // Models
     in-out property <[FolderItem]> folders: [];
-
-    // History model
     in-out property <[HistoryItem]> history: [];
-
-    // Presets model
     in-out property <[PresetItem]> presets: [];
 
     // Manual Convert Page State
@@ -90,14 +97,15 @@ export component MainWindow inherits Window {
     callback run_diagnostics_clicked();
     callback choose_custom_output_clicked();
     callback toggle_service_clicked();
+    callback preview_wheel_clicked();
 
     HorizontalLayout {
         // ==================== SIDEBAR ====================
         Rectangle {
-            width: 240px;
-            background: Theme.bg_sidebar;
+            width: 250px;
+            background: #10131d;
             border_width: 1px;
-            border_color: Theme.border_subtle;
+            border_color: #1a202c;
 
             VerticalLayout {
                 padding: 20px;
@@ -107,6 +115,7 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     spacing: 12px;
                     alignment: start;
+                    vertical-stretch: 0;
 
                     Image {
                         source: @image-url("../../../assets/app_icon.png");
@@ -117,43 +126,46 @@ export component MainWindow inherits Window {
 
                     VerticalLayout {
                         alignment: center;
-                        spacing: 1px;
+                        spacing: 2px;
 
                         Text {
                             text: "OrbitConvert";
                             font_size: 16px;
                             font_weight: 800;
-                            color: Theme.text_primary;
+                            color: #FFFFFF;
                         }
 
                         Text {
-                            text: "ANY FILE. ANY FORMAT.";
+                            text: "UNIVERSAL FILE CONVERTER";
                             font_size: 8px;
-                            font_weight: 600;
-                            color: Theme.text_muted;
-                            letter_spacing: 0.5px;
+                            font_weight: 700;
+                            color: #64748B;
+                            letter_spacing: 0.6px;
                         }
                     }
                 }
 
                 Rectangle {
                     height: 1px;
-                    background: Theme.border_subtle;
+                    background: #1a202c;
+                    vertical-stretch: 0;
                 }
 
-                // Nav Items
+                // Navigation Items
                 VerticalLayout {
-                    spacing: 6px;
+                    spacing: 4px;
+                    alignment: start;
+                    vertical-stretch: 0;
 
                     // 0: Dashboard
                     Rectangle {
-                        height: 42px;
-                        border_radius: 8px;
-                        background: root.selected_nav == 0 ? Theme.accent_blue : transparent;
+                        height: 38px;
+                        border_radius: 6px;
+                        background: root.selected_nav == 0 ? #1e2638 : transparent;
+                        border_width: root.selected_nav == 0 ? 1px : 0px;
+                        border_color: #2b364e;
 
-                        TouchArea {
-                            clicked => { root.selected_nav = 0; root.nav_clicked(0); }
-                        }
+                        TouchArea { clicked => { root.selected_nav = 0; root.nav_clicked(0); } }
 
                         HorizontalLayout {
                             padding_left: 14px;
@@ -163,16 +175,15 @@ export component MainWindow inherits Window {
 
                             Text {
                                 text: "✦";
-                                font_size: 14px;
-                                color: root.selected_nav == 0 ? #ffffff : Theme.text_secondary;
+                                font_size: 13px;
+                                color: root.selected_nav == 0 ? #248BFF : #8C96A8;
                                 vertical_alignment: center;
                             }
-
                             Text {
                                 text: "Dashboard";
                                 font_size: 13px;
                                 font_weight: root.selected_nav == 0 ? 700 : 500;
-                                color: root.selected_nav == 0 ? #ffffff : Theme.text_secondary;
+                                color: root.selected_nav == 0 ? #FFFFFF : #C8CDD7;
                                 vertical_alignment: center;
                             }
                         }
@@ -180,13 +191,13 @@ export component MainWindow inherits Window {
 
                     // 1: Convert
                     Rectangle {
-                        height: 42px;
-                        border_radius: 8px;
-                        background: root.selected_nav == 1 ? Theme.accent_blue : transparent;
+                        height: 38px;
+                        border_radius: 6px;
+                        background: root.selected_nav == 1 ? #1e2638 : transparent;
+                        border_width: root.selected_nav == 1 ? 1px : 0px;
+                        border_color: #2b364e;
 
-                        TouchArea {
-                            clicked => { root.selected_nav = 1; root.nav_clicked(1); }
-                        }
+                        TouchArea { clicked => { root.selected_nav = 1; root.nav_clicked(1); } }
 
                         HorizontalLayout {
                             padding_left: 14px;
@@ -196,17 +207,15 @@ export component MainWindow inherits Window {
 
                             Text {
                                 text: "↻";
-                                font_size: 16px;
-                                font_weight: 700;
-                                color: root.selected_nav == 1 ? #ffffff : Theme.text_secondary;
+                                font_size: 15px;
+                                color: root.selected_nav == 1 ? #248BFF : #8C96A8;
                                 vertical_alignment: center;
                             }
-
                             Text {
-                                text: "Convert";
+                                text: "Convert Studio";
                                 font_size: 13px;
                                 font_weight: root.selected_nav == 1 ? 700 : 500;
-                                color: root.selected_nav == 1 ? #ffffff : Theme.text_secondary;
+                                color: root.selected_nav == 1 ? #FFFFFF : #C8CDD7;
                                 vertical_alignment: center;
                             }
                         }
@@ -214,13 +223,13 @@ export component MainWindow inherits Window {
 
                     // 2: History
                     Rectangle {
-                        height: 42px;
-                        border_radius: 8px;
-                        background: root.selected_nav == 2 ? Theme.accent_blue : transparent;
+                        height: 38px;
+                        border_radius: 6px;
+                        background: root.selected_nav == 2 ? #1e2638 : transparent;
+                        border_width: root.selected_nav == 2 ? 1px : 0px;
+                        border_color: #2b364e;
 
-                        TouchArea {
-                            clicked => { root.selected_nav = 2; root.nav_clicked(2); }
-                        }
+                        TouchArea { clicked => { root.selected_nav = 2; root.nav_clicked(2); } }
 
                         HorizontalLayout {
                             padding_left: 14px;
@@ -230,16 +239,15 @@ export component MainWindow inherits Window {
 
                             Text {
                                 text: "◷";
-                                font_size: 14px;
-                                color: root.selected_nav == 2 ? #ffffff : Theme.text_secondary;
+                                font_size: 13px;
+                                color: root.selected_nav == 2 ? #248BFF : #8C96A8;
                                 vertical_alignment: center;
                             }
-
                             Text {
                                 text: "History";
                                 font_size: 13px;
                                 font_weight: root.selected_nav == 2 ? 700 : 500;
-                                color: root.selected_nav == 2 ? #ffffff : Theme.text_secondary;
+                                color: root.selected_nav == 2 ? #FFFFFF : #C8CDD7;
                                 vertical_alignment: center;
                             }
                         }
@@ -247,13 +255,13 @@ export component MainWindow inherits Window {
 
                     // 3: Folders
                     Rectangle {
-                        height: 42px;
-                        border_radius: 8px;
-                        background: root.selected_nav == 3 ? Theme.accent_blue : transparent;
+                        height: 38px;
+                        border_radius: 6px;
+                        background: root.selected_nav == 3 ? #1e2638 : transparent;
+                        border_width: root.selected_nav == 3 ? 1px : 0px;
+                        border_color: #2b364e;
 
-                        TouchArea {
-                            clicked => { root.selected_nav = 3; root.nav_clicked(3); }
-                        }
+                        TouchArea { clicked => { root.selected_nav = 3; root.nav_clicked(3); } }
 
                         HorizontalLayout {
                             padding_left: 14px;
@@ -263,15 +271,15 @@ export component MainWindow inherits Window {
 
                             Text {
                                 text: "📁";
-                                font_size: 13px;
+                                font_size: 12px;
+                                color: root.selected_nav == 3 ? #248BFF : #8C96A8;
                                 vertical_alignment: center;
                             }
-
                             Text {
-                                text: "Folders";
+                                text: "Managed Folders";
                                 font_size: 13px;
                                 font_weight: root.selected_nav == 3 ? 700 : 500;
-                                color: root.selected_nav == 3 ? #ffffff : Theme.text_secondary;
+                                color: root.selected_nav == 3 ? #FFFFFF : #C8CDD7;
                                 vertical_alignment: center;
                             }
                         }
@@ -279,13 +287,45 @@ export component MainWindow inherits Window {
 
                     // 4: Presets
                     Rectangle {
-                        height: 42px;
-                        border_radius: 8px;
-                        background: root.selected_nav == 4 ? Theme.accent_blue : transparent;
+                        height: 38px;
+                        border_radius: 6px;
+                        background: root.selected_nav == 4 ? #1e2638 : transparent;
+                        border_width: root.selected_nav == 4 ? 1px : 0px;
+                        border_color: #2b364e;
 
-                        TouchArea {
-                            clicked => { root.selected_nav = 4; root.nav_clicked(4); }
+                        TouchArea { clicked => { root.selected_nav = 4; root.nav_clicked(4); } }
+
+                        HorizontalLayout {
+                            padding_left: 14px;
+                            padding_right: 14px;
+                            spacing: 12px;
+                            alignment: start;
+
+                            Text {
+                                text: "⚡";
+                                font_size: 13px;
+                                color: root.selected_nav == 4 ? #248BFF : #8C96A8;
+                                vertical_alignment: center;
+                            }
+                            Text {
+                                text: "Presets";
+                                font_size: 13px;
+                                font_weight: root.selected_nav == 4 ? 700 : 500;
+                                color: root.selected_nav == 4 ? #FFFFFF : #C8CDD7;
+                                vertical_alignment: center;
+                            }
                         }
+                    }
+
+                    // 5: Settings
+                    Rectangle {
+                        height: 38px;
+                        border_radius: 6px;
+                        background: root.selected_nav == 5 ? #1e2638 : transparent;
+                        border_width: root.selected_nav == 5 ? 1px : 0px;
+                        border_color: #2b364e;
+
+                        TouchArea { clicked => { root.selected_nav = 5; root.nav_clicked(5); } }
 
                         HorizontalLayout {
                             padding_left: 14px;
@@ -296,29 +336,28 @@ export component MainWindow inherits Window {
                             Text {
                                 text: "⚙";
                                 font_size: 14px;
-                                color: root.selected_nav == 4 ? #ffffff : Theme.text_secondary;
+                                color: root.selected_nav == 5 ? #248BFF : #8C96A8;
                                 vertical_alignment: center;
                             }
-
                             Text {
-                                text: "Presets";
+                                text: "Settings";
                                 font_size: 13px;
-                                font_weight: root.selected_nav == 4 ? 700 : 500;
-                                color: root.selected_nav == 4 ? #ffffff : Theme.text_secondary;
+                                font_weight: root.selected_nav == 5 ? 700 : 500;
+                                color: root.selected_nav == 5 ? #FFFFFF : #C8CDD7;
                                 vertical_alignment: center;
                             }
                         }
                     }
 
-                    // 5: Settings
+                    // 6: Diagnostics
                     Rectangle {
-                        height: 42px;
-                        border_radius: 8px;
-                        background: root.selected_nav == 5 ? Theme.accent_blue : transparent;
+                        height: 38px;
+                        border_radius: 6px;
+                        background: root.selected_nav == 6 ? #1e2638 : transparent;
+                        border_width: root.selected_nav == 6 ? 1px : 0px;
+                        border_color: #2b364e;
 
-                        TouchArea {
-                            clicked => { root.selected_nav = 5; root.nav_clicked(5); }
-                        }
+                        TouchArea { clicked => { root.selected_nav = 6; root.nav_clicked(6); } }
 
                         HorizontalLayout {
                             padding_left: 14px;
@@ -327,72 +366,85 @@ export component MainWindow inherits Window {
                             alignment: start;
 
                             Text {
-                                text: "⚒";
-                                font_size: 14px;
-                                color: root.selected_nav == 5 ? #ffffff : Theme.text_secondary;
-                                vertical_alignment: center;
-                            }
-
-                            Text {
-                                text: "Settings";
-                                font_size: 13px;
-                                font_weight: root.selected_nav == 5 ? 700 : 500;
-                                color: root.selected_nav == 5 ? #ffffff : Theme.text_secondary;
-                                vertical_alignment: center;
-                            }
-                        }
-                    }
-                }
-
-                // Push status card to bottom
-                Rectangle {
-                    vertical_stretch: 1;
-                }
-
-                // Service Status Card
-                Rectangle {
-                    height: 72px;
-                    border_radius: 10px;
-                    background: #141722;
-                    border_width: 1px;
-                    border_color: #232734;
-
-                    TouchArea {
-                        clicked => { root.toggle_service_clicked(); }
-                    }
-
-                    HorizontalLayout {
-                        padding: 12px;
-                        spacing: 10px;
-                        alignment: center;
-
-                        Rectangle {
-                            width: 10px;
-                            height: 10px;
-                            border_radius: 5px;
-                            background: root.service_active ? Theme.status_green : #6b7280;
-                        }
-
-                        VerticalLayout {
-                            spacing: 2px;
-                            Text {
-                                text: root.service_active ? "Service Active" : "Service Paused";
+                                text: "🔍";
                                 font_size: 12px;
-                                font_weight: 700;
-                                color: root.service_active ? Theme.status_green : Theme.text_muted;
+                                color: root.selected_nav == 6 ? #248BFF : #8C96A8;
+                                vertical_alignment: center;
                             }
                             Text {
-                                text: "Hold Alt in File Explorer";
-                                font_size: 10px;
-                                color: Theme.text_secondary;
+                                text: "Diagnostics";
+                                font_size: 13px;
+                                font_weight: root.selected_nav == 6 ? 700 : 500;
+                                color: root.selected_nav == 6 ? #FFFFFF : #C8CDD7;
+                                vertical_alignment: center;
                             }
                         }
+                    }
+                }
 
-                        Text {
-                            text: "›";
-                            font_size: 18px;
-                            color: Theme.text_muted;
-                            vertical_alignment: center;
+                // Vertical Spacer
+                Rectangle { vertical-stretch: 1; }
+
+                // Sidebar Footer: Service Status & Wheel Preview Button
+                VerticalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    vertical-stretch: 0;
+
+                    AppButton {
+                        text: "Preview Radial Wheel";
+                        icon_text: "◎";
+                        is_primary: false;
+                        clicked => { root.preview_wheel_clicked(); }
+                    }
+
+                    Rectangle {
+                        height: 52px;
+                        border_radius: 6px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2436;
+
+                        HorizontalLayout {
+                            padding_left: 12px;
+                            padding_right: 12px;
+                            spacing: 10px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+
+                                Text {
+                                    text: "Explorer Hook";
+                                    font_size: 12px;
+                                    font_weight: 600;
+                                    color: #FFFFFF;
+                                }
+                                Text {
+                                    text: root.service_active ? "Hold Alt to Convert" : "Service Paused";
+                                    font_size: 10px;
+                                    color: root.service_active ? #10B981 : #EF4444;
+                                }
+                            }
+
+                            Rectangle {
+                                width: 22px;
+                                height: 22px;
+                                border_radius: 11px;
+                                background: root.service_active ? #10B98120 : #EF444420;
+                                border_width: 1.5px;
+                                border_color: root.service_active ? #10B981 : #EF4444;
+
+                                TouchArea { clicked => { root.toggle_service_clicked(); } }
+
+                                Rectangle {
+                                    width: 8px;
+                                    height: 8px;
+                                    border_radius: 4px;
+                                    background: root.service_active ? #10B981 : #EF4444;
+                                }
+                            }
                         }
                     }
                 }
@@ -401,18 +453,17 @@ export component MainWindow inherits Window {
 
         // ==================== MAIN CONTENT AREA ====================
         VerticalLayout {
-            horizontal_stretch: 1;
-
-            // Top Header Bar
+            // Header Bar
             Rectangle {
-                height: 70px;
-                background: Theme.bg_header;
+                height: 64px;
+                background: #10131d;
                 border_width: 1px;
-                border_color: Theme.border_subtle;
+                border_color: #1a202c;
+                vertical-stretch: 0;
 
                 HorizontalLayout {
-                    padding_left: 32px;
-                    padding_right: 32px;
+                    padding_left: 28px;
+                    padding_right: 28px;
                     alignment: space-between;
 
                     VerticalLayout {
@@ -420,1193 +471,979 @@ export component MainWindow inherits Window {
                         spacing: 2px;
 
                         Text {
-                            text: root.selected_nav == 0 ? "Welcome to OrbitConvert" :
-                                  root.selected_nav == 1 ? "Manual Conversion Studio" :
-                                  root.selected_nav == 2 ? "Conversion History" :
-                                  root.selected_nav == 3 ? "Managed Folders" :
-                                  root.selected_nav == 4 ? "Conversion Presets" : "Application Preferences";
-                            font_size: 20px;
+                            text: root.selected_nav == 0 ? "Dashboard" :
+                                root.selected_nav == 1 ? "Convert Studio" :
+                                root.selected_nav == 2 ? "Conversion History" :
+                                root.selected_nav == 3 ? "Managed Folders" :
+                                root.selected_nav == 4 ? "Conversion Presets" :
+                                root.selected_nav == 5 ? "Application Settings" :
+                                "Explorer Diagnostics";
+                            font_size: 18px;
                             font_weight: 800;
-                            color: Theme.text_primary;
+                            color: #FFFFFF;
                         }
 
                         Text {
-                            text: root.selected_nav == 0 ? "Fast. Powerful. Professional file conversion." :
-                                  root.selected_nav == 1 ? "Convert images, vectors, and documents directly." :
-                                  root.selected_nav == 2 ? "Real-time record of all completed file transformations." :
-                                  root.selected_nav == 3 ? "Configure watched directories and output destinations." :
-                                  root.selected_nav == 4 ? "One-click reusable format and quality recipes." :
-                                  "Configure hotkeys, overlay radius, image fidelity, and startup.";
-                            font_size: 12px;
-                            color: Theme.text_secondary;
+                            text: root.selected_nav == 0 ? "Universal file conversion with radial wheel integration" :
+                                root.selected_nav == 1 ? "Convert any file manual workspace" :
+                                root.selected_nav == 2 ? "Audit log of conversions" :
+                                root.selected_nav == 3 ? "Monitored directories for instant access" :
+                                root.selected_nav == 4 ? "One-click conversion profiles" :
+                                root.selected_nav == 5 ? "Configure shortcuts, output paths, and engines" :
+                                "Inspect Explorer hit-testing and pipeline resolution";
+                            font_size: 11px;
+                            color: #8C96A8;
                         }
                     }
 
                     HorizontalLayout {
-                        alignment: end;
-                        spacing: 12px;
+                        alignment: center;
+                        spacing: 10px;
 
-                        // Diagnostic Button
-                        Button {
-                            text: "⚙ Diagnostics";
+                        SecondaryButton {
+                            text: "Run Diagnostics";
+                            icon_text: "🔍";
                             clicked => { root.run_diagnostics_clicked(); }
+                        }
+
+                        AppButton {
+                            text: "Convert File";
+                            icon_text: "+";
+                            is_primary: true;
+                            clicked => { root.selected_nav = 1; root.browse_file_clicked(); }
                         }
                     }
                 }
             }
 
             // Scrollable Content View
-            ScrollView {
+            Rectangle {
+                background: #0d0f17;
+
                 // PAGE 0: DASHBOARD
                 if root.selected_nav == 0: VerticalLayout {
+                    padding: 28px;
                     spacing: 24px;
+                    alignment: start;
 
-                    // Category Cards Row (Reference mockup 6 cards)
-                    HorizontalLayout {
-                        spacing: 14px;
+                    // Category Cards Grid
+                    VerticalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        vertical-stretch: 0;
 
-                        // Images (Active)
-                        Rectangle {
-                            horizontal_stretch: 1;
-                            height: 110px;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
-                            border_width: 1.5px;
-                            border_color: #1e3a8a;
+                        Text {
+                            text: "SUPPORTED CONVERSION FORMATS";
+                            font_size: 11px;
+                            font_weight: 700;
+                            color: #64748B;
+                            letter_spacing: 0.8px;
+                        }
 
-                            TouchArea {
-                                clicked => { root.selected_nav = 1; root.nav_clicked(1); }
-                            }
+                        HorizontalLayout {
+                            spacing: 14px;
+                            vertical-stretch: 0;
 
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 6px;
+                            // Images Card
+                            Rectangle {
+                                height: 110px;
+                                border_radius: 8px;
+                                background: #141824;
+                                border_width: 1px;
+                                border_color: #1e2638;
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Rectangle {
-                                        width: 28px;
-                                        height: 28px;
-                                        border_radius: 6px;
-                                        background: #2563eb;
-                                        Text {
-                                            text: "🖼";
-                                            font_size: 14px;
-                                            horizontal_alignment: center;
-                                            vertical_alignment: center;
-                                        }
+                                VerticalLayout {
+                                    padding: 16px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "🖼 Images"; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                        StatusBadge { text: "READY"; badge_color: #248BFF20; text_color: #38BDF8; }
                                     }
                                     Text {
-                                        text: "Images";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: #ffffff;
-                                        vertical_alignment: center;
+                                        text: "SVG, PNG, JPG, WebP, ICO, BMP, TIFF, GIF";
+                                        font_size: 11px;
+                                        color: #8C96A8;
                                     }
                                 }
+                            }
 
-                                Text {
-                                    text: "SVG, PNG, JPG, WebP, ICO, BMP, TIFF";
-                                    font_size: 10px;
-                                    color: #94a3b8;
-                                    overflow: elide;
+                            // Video Card
+                            Rectangle {
+                                height: 110px;
+                                border_radius: 8px;
+                                background: #141824;
+                                border_width: 1px;
+                                border_color: #1e2638;
+
+                                VerticalLayout {
+                                    padding: 16px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "🎬 Video"; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                        StatusBadge { text: "FFMPEG"; badge_color: #10B98120; text_color: #10B981; }
+                                    }
+                                    Text {
+                                        text: "MP4, MOV, MKV, AVI, WebM → Audio Extraction";
+                                        font_size: 11px;
+                                        color: #8C96A8;
+                                    }
                                 }
+                            }
 
-                                Text {
-                                    text: "● Installed & Ready";
-                                    font_size: 9px;
-                                    font_weight: 700;
-                                    color: #10b981;
+                            // Audio Card
+                            Rectangle {
+                                height: 110px;
+                                border_radius: 8px;
+                                background: #141824;
+                                border_width: 1px;
+                                border_color: #1e2638;
+
+                                VerticalLayout {
+                                    padding: 16px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "🎵 Audio"; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                        StatusBadge { text: "READY"; badge_color: #10B98120; text_color: #10B981; }
+                                    }
+                                    Text {
+                                        text: "MP3, WAV, FLAC, AAC, M4A, OGG Transcoding";
+                                        font_size: 11px;
+                                        color: #8C96A8;
+                                    }
                                 }
                             }
                         }
 
-                        // Video (Disabled)
-                        Rectangle {
-                            horizontal_stretch: 1;
-                            height: 110px;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
-                            border_width: 1px;
-                            border_color: Theme.border_subtle;
+                        HorizontalLayout {
+                            spacing: 14px;
+                            vertical-stretch: 0;
 
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 6px;
+                            // Spreadsheets & Data Card
+                            Rectangle {
+                                height: 110px;
+                                border_radius: 8px;
+                                background: #141824;
+                                border_width: 1px;
+                                border_color: #1e2638;
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Rectangle {
-                                        width: 28px;
-                                        height: 28px;
-                                        border_radius: 6px;
-                                        background: #7c3aed33;
-                                        Text {
-                                            text: "▶";
-                                            font_size: 12px;
-                                            color: #a78bfa;
-                                            horizontal_alignment: center;
-                                            vertical_alignment: center;
-                                        }
+                                VerticalLayout {
+                                    padding: 16px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "📊 Spreadsheets & Data"; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                        StatusBadge { text: "READY"; badge_color: #10B98120; text_color: #10B981; }
                                     }
                                     Text {
-                                        text: "Video";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: #64748b;
-                                        vertical_alignment: center;
+                                        text: "CSV ↔ JSON, CSV ↔ TSV Tabular Transformations";
+                                        font_size: 11px;
+                                        color: #8C96A8;
                                     }
-                                }
-
-                                Text {
-                                    text: "MP4, MOV, MKV, WebM, AVI";
-                                    font_size: 10px;
-                                    color: #475569;
-                                    overflow: elide;
-                                }
-
-                                Text {
-                                    text: "Requires FFmpeg Adapter";
-                                    font_size: 9px;
-                                    color: #64748b;
                                 }
                             }
-                        }
 
-                        // Audio (Disabled)
-                        Rectangle {
-                            horizontal_stretch: 1;
-                            height: 110px;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
-                            border_width: 1px;
-                            border_color: Theme.border_subtle;
+                            // Documents Card
+                            Rectangle {
+                                height: 110px;
+                                border_radius: 8px;
+                                background: #141824;
+                                border_width: 1px;
+                                border_color: #1e2638;
 
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 6px;
+                                VerticalLayout {
+                                    padding: 16px;
+                                    alignment: space-between;
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Rectangle {
-                                        width: 28px;
-                                        height: 28px;
-                                        border_radius: 6px;
-                                        background: #e11d4833;
-                                        Text {
-                                            text: "♫";
-                                            font_size: 14px;
-                                            color: #fb7185;
-                                            horizontal_alignment: center;
-                                            vertical_alignment: center;
-                                        }
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "📄 Documents"; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                        StatusBadge { text: "STANDALONE"; badge_color: #F59E0B20; text_color: #F59E0B; }
                                     }
                                     Text {
-                                        text: "Audio";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: #64748b;
-                                        vertical_alignment: center;
+                                        text: "PDF, TXT, HTML & Office Formats";
+                                        font_size: 11px;
+                                        color: #8C96A8;
                                     }
-                                }
-
-                                Text {
-                                    text: "MP3, WAV, FLAC, AAC, OGG";
-                                    font_size: 10px;
-                                    color: #475569;
-                                    overflow: elide;
-                                }
-
-                                Text {
-                                    text: "Requires Audio Adapter";
-                                    font_size: 9px;
-                                    color: #64748b;
                                 }
                             }
-                        }
 
-                        // Documents (Disabled)
-                        Rectangle {
-                            horizontal_stretch: 1;
-                            height: 110px;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
-                            border_width: 1px;
-                            border_color: Theme.border_subtle;
+                            // Radial Wheel Card
+                            Rectangle {
+                                height: 110px;
+                                border_radius: 8px;
+                                background: #141824;
+                                border_width: 1px;
+                                border_color: #1e2638;
 
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 6px;
+                                VerticalLayout {
+                                    padding: 16px;
+                                    alignment: space-between;
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Rectangle {
-                                        width: 28px;
-                                        height: 28px;
-                                        border_radius: 6px;
-                                        background: #ea580c33;
-                                        Text {
-                                            text: "📄";
-                                            font_size: 13px;
-                                            horizontal_alignment: center;
-                                            vertical_alignment: center;
-                                        }
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "◎ Radial Wheel"; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                        StatusBadge { text: "ACTIVE"; badge_color: #248BFF20; text_color: #38BDF8; }
                                     }
                                     Text {
-                                        text: "Documents";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: #64748b;
-                                        vertical_alignment: center;
+                                        text: "Hover file in Explorer + Hold Alt to Trigger";
+                                        font_size: 11px;
+                                        color: #8C96A8;
                                     }
-                                }
-
-                                Text {
-                                    text: "PDF, DOCX, ODT, PPTX, TXT";
-                                    font_size: 10px;
-                                    color: #475569;
-                                    overflow: elide;
-                                }
-
-                                Text {
-                                    text: "Requires Doc Adapter";
-                                    font_size: 9px;
-                                    color: #64748b;
-                                }
-                            }
-                        }
-
-                        // Spreadsheets (Disabled)
-                        Rectangle {
-                            horizontal_stretch: 1;
-                            height: 110px;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
-                            border_width: 1px;
-                            border_color: Theme.border_subtle;
-
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 6px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Rectangle {
-                                        width: 28px;
-                                        height: 28px;
-                                        border_radius: 6px;
-                                        background: #05966933;
-                                        Text {
-                                            text: "📊";
-                                            font_size: 13px;
-                                            horizontal_alignment: center;
-                                            vertical_alignment: center;
-                                        }
-                                    }
-                                    Text {
-                                        text: "Spreadsheets";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: #64748b;
-                                        vertical_alignment: center;
-                                    }
-                                }
-
-                                Text {
-                                    text: "CSV, XLSX, ODS, TSV, JSON";
-                                    font_size: 10px;
-                                    color: #475569;
-                                    overflow: elide;
-                                }
-
-                                Text {
-                                    text: "Requires Sheet Adapter";
-                                    font_size: 9px;
-                                    color: #64748b;
-                                }
-                            }
-                        }
-
-                        // Archives (Disabled)
-                        Rectangle {
-                            horizontal_stretch: 1;
-                            height: 110px;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
-                            border_width: 1px;
-                            border_color: Theme.border_subtle;
-
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 6px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Rectangle {
-                                        width: 28px;
-                                        height: 28px;
-                                        border_radius: 6px;
-                                        background: #d9770633;
-                                        Text {
-                                            text: "🗄";
-                                            font_size: 13px;
-                                            horizontal_alignment: center;
-                                            vertical_alignment: center;
-                                        }
-                                    }
-                                    Text {
-                                        text: "Archives";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: #64748b;
-                                        vertical_alignment: center;
-                                    }
-                                }
-
-                                Text {
-                                    text: "ZIP, 7Z, RAR, TAR, GZ";
-                                    font_size: 10px;
-                                    color: #475569;
-                                    overflow: elide;
-                                }
-
-                                Text {
-                                    text: "Requires Archive Adapter";
-                                    font_size: 9px;
-                                    color: #64748b;
                                 }
                             }
                         }
                     }
 
-                    // Two Columns: Watched Folders (Left) & Quick Settings (Right)
+                    // Lower Panels: Managed Folders & Quick Settings
                     HorizontalLayout {
                         spacing: 20px;
+                        vertical-stretch: 0;
 
-                        // Left Column: Watched Folders
+                        // Folders Preview
                         Rectangle {
-                            horizontal_stretch: 6;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
+                            border_radius: 8px;
+                            background: #141824;
                             border_width: 1px;
-                            border_color: Theme.border_subtle;
+                            border_color: #1e2638;
 
                             VerticalLayout {
-                                padding: 20px;
+                                padding: 18px;
                                 spacing: 14px;
+                                alignment: start;
 
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    VerticalLayout {
-                                        spacing: 2px;
-                                        Text {
-                                            text: "📁 Watched Folders";
-                                            font_size: 15px;
-                                            font_weight: 700;
-                                            color: #ffffff;
-                                        }
-                                        Text {
-                                            text: "Monitor directories and access them quickly.";
-                                            font_size: 11px;
-                                            color: Theme.text_secondary;
-                                        }
-                                    }
+                                    vertical-stretch: 0;
 
-                                    Button {
+                                    Text { text: "Managed Folders"; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                    AppButton {
                                         text: "+ Add Folder";
-                                        primary: true;
+                                        is_primary: true;
                                         clicked => { root.add_folder_clicked(); }
                                     }
                                 }
 
-                                Rectangle {
-                                    height: 1px;
-                                    background: Theme.border_subtle;
+                                if root.folders.length == 0: Rectangle {
+                                    height: 100px;
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 4px;
+                                        Text { text: "No folders added yet"; font_size: 12px; color: #8C96A8; horizontal_alignment: center; }
+                                        Text { text: "Add folders for quick access and monitored conversions"; font_size: 10px; color: #475569; horizontal_alignment: center; }
+                                    }
                                 }
 
-                                // Folder items list
                                 for folder in root.folders: Rectangle {
                                     height: 52px;
-                                    border_radius: 8px;
-                                    background: #181b24;
+                                    border_radius: 6px;
+                                    background: #0d1017;
                                     border_width: 1px;
-                                    border_color: #242938;
+                                    border_color: #1a202c;
+                                    vertical-stretch: 0;
 
                                     HorizontalLayout {
-                                        padding_left: 14px;
-                                        padding_right: 14px;
-                                        spacing: 12px;
+                                        padding_left: 12px;
+                                        padding_right: 12px;
                                         alignment: space-between;
 
-                                        HorizontalLayout {
-                                            spacing: 10px;
-                                            Text {
-                                                text: "📁";
-                                                font_size: 16px;
-                                                vertical_alignment: center;
-                                            }
-                                            VerticalLayout {
-                                                alignment: center;
-                                                spacing: 1px;
-                                                Text {
-                                                    text: folder.name;
-                                                    font_size: 13px;
-                                                    font_weight: 600;
-                                                    color: #f8fafc;
-                                                }
-                                                Text {
-                                                    text: folder.path;
-                                                    font_size: 10px;
-                                                    color: #94a3b8;
-                                                }
-                                            }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 2px;
+                                            Text { text: folder.name; font_size: 12px; font_weight: 600; color: #FFFFFF; }
+                                            Text { text: folder.path; font_size: 10px; color: #64748B; overflow: elide; }
                                         }
 
                                         HorizontalLayout {
-                                            spacing: 10px;
-                                            alignment: end;
-
-                                            CheckBox {
-                                                checked: folder.enabled;
-                                                toggled => { root.toggle_folder(folder.id, self.checked); }
-                                            }
-
-                                            Button {
+                                            alignment: center;
+                                            spacing: 8px;
+                                            SecondaryButton {
                                                 text: "Open";
                                                 clicked => { root.open_folder_path(folder.path); }
                                             }
+                                            DangerButton {
+                                                text: "✕";
+                                                clicked => { root.remove_folder(folder.id); }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Right Column: Quick Settings
+                        // Quick Settings
                         Rectangle {
-                            horizontal_stretch: 5;
-                            border_radius: 12px;
-                            background: Theme.bg_card;
+                            width: 380px;
+                            border_radius: 8px;
+                            background: #141824;
                             border_width: 1px;
-                            border_color: Theme.border_subtle;
+                            border_color: #1e2638;
 
                             VerticalLayout {
-                                padding: 20px;
+                                padding: 18px;
                                 spacing: 14px;
+                                alignment: start;
 
-                                HorizontalLayout {
-                                    alignment: space-between;
-                                    Text {
-                                        text: "⚙ Quick Settings";
-                                        font_size: 15px;
-                                        font_weight: 700;
-                                        color: #ffffff;
-                                    }
-                                    Button {
-                                        text: "View All";
-                                        clicked => { root.selected_nav = 5; root.nav_clicked(5); }
-                                    }
-                                }
+                                Text { text: "Quick Conversion Settings"; font_size: 14px; font_weight: 700; color: #FFFFFF; vertical-stretch: 0; }
 
-                                Rectangle {
-                                    height: 1px;
-                                    background: Theme.border_subtle;
-                                }
-
-                                // Trigger Row
-                                HorizontalLayout {
-                                    alignment: space-between;
-                                    Text {
-                                        text: "Activation Shortcut:";
-                                        font_size: 12px;
-                                        color: Theme.text_secondary;
-                                        vertical_alignment: center;
-                                    }
-                                    Rectangle {
-                                        height: 24px;
-                                        border_radius: 4px;
-                                        background: #1e293b;
-                                        border_width: 1px;
-                                        border_color: #3b82f6;
-                                        HorizontalLayout {
-                                            padding_left: 8px;
-                                            padding_right: 8px;
-                                            Text {
-                                                text: "Alt (Hold in Explorer)";
-                                                font_size: 11px;
-                                                font_weight: 700;
-                                                color: #60a5fa;
-                                                vertical_alignment: center;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Output Directory Row
-                                HorizontalLayout {
-                                    alignment: space-between;
-                                    Text {
-                                        text: "Default Output Folder:";
-                                        font_size: 12px;
-                                        color: Theme.text_secondary;
-                                        vertical_alignment: center;
-                                    }
-                                    Text {
-                                        text: root.output_folder_label;
-                                        font_size: 12px;
-                                        font_weight: 600;
-                                        color: #f1f5f9;
-                                        vertical_alignment: center;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                // Quality Slider
                                 VerticalLayout {
-                                    spacing: 4px;
+                                    spacing: 12px;
+                                    alignment: start;
+                                    vertical-stretch: 0;
+
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text {
-                                            text: "Image Quality (JPEG / WebP):";
-                                            font_size: 12px;
-                                            color: Theme.text_secondary;
-                                        }
-                                        Text {
-                                            text: root.jpeg_quality + "%";
-                                            font_size: 12px;
-                                            font_weight: 700;
-                                            color: #93c5fd;
-                                        }
+                                        Text { text: "JPEG Output Quality: " + root.jpeg_quality + "%"; font_size: 12px; color: #C8CDD7; }
                                     }
                                     Slider {
-                                        minimum: 50;
-                                        maximum: 100;
                                         value: root.jpeg_quality;
+                                        minimum: 20;
+                                        maximum: 100;
                                         changed(val) => { root.jpeg_quality = Math.round(val); }
                                     }
-                                }
 
-                                // SVG Scale Slider
-                                VerticalLayout {
-                                    spacing: 4px;
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text {
-                                            text: "SVG Rasterization Scale:";
-                                            font_size: 12px;
-                                            color: Theme.text_secondary;
-                                        }
-                                        Text {
-                                            text: root.svg_scale + "x";
-                                            font_size: 12px;
-                                            font_weight: 700;
-                                            color: #93c5fd;
-                                        }
+                                        Text { text: "SVG Rasterization Scale: " + Math.round(root.svg_scale * 10.0) / 10.0 + "x"; font_size: 12px; color: #C8CDD7; }
                                     }
                                     Slider {
-                                        minimum: 1.0;
-                                        maximum: 4.0;
                                         value: root.svg_scale;
-                                        changed(val) => { root.svg_scale = Math.round(val * 10) / 10; }
+                                        minimum: 0.5;
+                                        maximum: 4.0;
+                                        changed(val) => { root.svg_scale = val; }
                                     }
-                                }
 
-                                // Notifications
-                                CheckBox {
-                                    text: "Show Windows completion notifications";
-                                    checked: root.show_notifications;
-                                    toggled => { root.show_notifications = self.checked; }
+                                    CheckBox {
+                                        text: "Show Windows desktop completion notifications";
+                                        checked: root.show_notifications;
+                                        toggled => { root.show_notifications = self.checked; }
+                                    }
+
+                                    AppButton {
+                                        text: "Save Preferences";
+                                        is_primary: true;
+                                        clicked => { root.save_settings_clicked(); }
+                                    }
                                 }
                             }
                         }
                     }
+
+                    Rectangle { vertical-stretch: 1; }
                 }
 
-                // PAGE 1: MANUAL CONVERT
+                // PAGE 1: CONVERT STUDIO
                 if root.selected_nav == 1: VerticalLayout {
+                    padding: 28px;
                     spacing: 20px;
+                    alignment: start;
 
-                    // Source File Picker Card
                     Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
+                        border_radius: 8px;
+                        background: #141824;
                         border_width: 1px;
-                        border_color: Theme.border_subtle;
+                        border_color: #1e2638;
 
                         VerticalLayout {
                             padding: 24px;
                             spacing: 16px;
+                            alignment: start;
 
-                            Text {
-                                text: "Select Source File";
-                                font_size: 16px;
-                                font_weight: 700;
-                                color: #ffffff;
+                            Text { text: "MANUAL CONVERSION WORKSPACE"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                            HorizontalLayout {
+                                spacing: 14px;
+                                alignment: start;
+                                vertical-stretch: 0;
+
+                                AppButton {
+                                    text: "Browse Source File...";
+                                    icon_text: "📁";
+                                    is_primary: true;
+                                    clicked => { root.browse_file_clicked(); }
+                                }
+
+                                if root.convert_source_path != "": SecondaryButton {
+                                    text: "Open File Location";
+                                    clicked => { root.open_folder_path(root.convert_source_path); }
+                                }
                             }
 
+                            // File Info Panel
                             Rectangle {
-                                height: 110px;
-                                border_radius: 10px;
-                                background: #11131a;
-                                border_width: 1.5px;
-                                border_color: #2b3244;
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 8px;
-
-                                    Text {
-                                        text: root.convert_source_path != "" ? root.convert_source_path : "Click Browse to select an SVG, PNG, JPG, or WebP file";
-                                        font_size: 13px;
-                                        color: root.convert_source_path != "" ? #60a5fa : #94a3b8;
-                                        horizontal_alignment: center;
-                                    }
-
-                                    Button {
-                                        text: "📂 Browse File...";
-                                        primary: true;
-                                        clicked => { root.browse_file_clicked(); }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Target Format Selector Card
-                    Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
-                        border_width: 1px;
-                        border_color: Theme.border_subtle;
-
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 16px;
-
-                            Text {
-                                text: "Target Output Format";
-                                font_size: 16px;
-                                font_weight: 700;
-                                color: #ffffff;
-                            }
-
-                            HorizontalLayout {
-                                spacing: 12px;
-
-                                // PNG Button
-                                Rectangle {
-                                    horizontal_stretch: 1;
-                                    height: 54px;
-                                    border_radius: 8px;
-                                    background: root.convert_target_fmt == "PNG" ? #1e3a8a : #181b26;
-                                    border_width: root.convert_target_fmt == "PNG" ? 2px : 1px;
-                                    border_color: root.convert_target_fmt == "PNG" ? #3b82f6 : #2a2f3f;
-
-                                    TouchArea {
-                                        clicked => { root.convert_target_fmt = "PNG"; root.select_target_format("PNG"); }
-                                    }
-
-                                    Text {
-                                        text: "PNG";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: root.convert_target_fmt == "PNG" ? #ffffff : #94a3b8;
-                                        horizontal_alignment: center;
-                                        vertical_alignment: center;
-                                    }
-                                }
-
-                                // JPG Button
-                                Rectangle {
-                                    horizontal_stretch: 1;
-                                    height: 54px;
-                                    border_radius: 8px;
-                                    background: root.convert_target_fmt == "JPG" ? #7c2d12 : #181b26;
-                                    border_width: root.convert_target_fmt == "JPG" ? 2px : 1px;
-                                    border_color: root.convert_target_fmt == "JPG" ? #ea580c : #2a2f3f;
-
-                                    TouchArea {
-                                        clicked => { root.convert_target_fmt = "JPG"; root.select_target_format("JPG"); }
-                                    }
-
-                                    Text {
-                                        text: "JPG";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: root.convert_target_fmt == "JPG" ? #ffffff : #94a3b8;
-                                        horizontal_alignment: center;
-                                        vertical_alignment: center;
-                                    }
-                                }
-
-                                // WEBP Button
-                                Rectangle {
-                                    horizontal_stretch: 1;
-                                    height: 54px;
-                                    border_radius: 8px;
-                                    background: root.convert_target_fmt == "WEBP" ? #064e3b : #181b26;
-                                    border_width: root.convert_target_fmt == "WEBP" ? 2px : 1px;
-                                    border_color: root.convert_target_fmt == "WEBP" ? #10b981 : #2a2f3f;
-
-                                    TouchArea {
-                                        clicked => { root.convert_target_fmt = "WEBP"; root.select_target_format("WEBP"); }
-                                    }
-
-                                    Text {
-                                        text: "WEBP";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: root.convert_target_fmt == "WEBP" ? #ffffff : #94a3b8;
-                                        horizontal_alignment: center;
-                                        vertical_alignment: center;
-                                    }
-                                }
-
-                                // ICO Button
-                                Rectangle {
-                                    horizontal_stretch: 1;
-                                    height: 54px;
-                                    border_radius: 8px;
-                                    background: root.convert_target_fmt == "ICO" ? #4c1d95 : #181b26;
-                                    border_width: root.convert_target_fmt == "ICO" ? 2px : 1px;
-                                    border_color: root.convert_target_fmt == "ICO" ? #8b5cf6 : #2a2f3f;
-
-                                    TouchArea {
-                                        clicked => { root.convert_target_fmt = "ICO"; root.select_target_format("ICO"); }
-                                    }
-
-                                    Text {
-                                        text: "ICO";
-                                        font_size: 14px;
-                                        font_weight: 700;
-                                        color: root.convert_target_fmt == "ICO" ? #ffffff : #94a3b8;
-                                        horizontal_alignment: center;
-                                        vertical_alignment: center;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Action & Result Card
-                    Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
-                        border_width: 1px;
-                        border_color: Theme.border_subtle;
-
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 16px;
-
-                            HorizontalLayout {
-                                alignment: space-between;
-
-                                VerticalLayout {
-                                    spacing: 4px;
-                                    Text {
-                                        text: root.convert_status_msg;
-                                        font_size: 14px;
-                                        font_weight: 600;
-                                        color: #ffffff;
-                                    }
-                                    Text {
-                                        text: root.convert_last_output != "" ? "Output: " + root.convert_last_output : "No file generated yet.";
-                                        font_size: 12px;
-                                        color: #94a3b8;
-                                    }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 12px;
-
-                                    if root.convert_last_output != "": Button {
-                                        text: "Open Converted File";
-                                        clicked => { root.open_output_file(root.convert_last_output); }
-                                    }
-
-                                    Button {
-                                        text: root.is_converting ? "Converting..." : "Convert Now 🚀";
-                                        primary: true;
-                                        enabled: root.convert_source_path != "" && !root.is_converting;
-                                        clicked => { root.start_manual_conversion(); }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // PAGE 2: HISTORY
-                if root.selected_nav == 2: VerticalLayout {
-                    spacing: 16px;
-
-                    Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
-                        border_width: 1px;
-                        border_color: Theme.border_subtle;
-
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 16px;
-
-                            HorizontalLayout {
-                                alignment: space-between;
-                                Text {
-                                    text: "Recent Conversions";
-                                    font_size: 16px;
-                                    font_weight: 700;
-                                    color: #ffffff;
-                                }
-                                Button {
-                                    text: "Clear History";
-                                    clicked => { root.clear_history_clicked(); }
-                                }
-                            }
-
-                            Rectangle {
-                                height: 1px;
-                                background: Theme.border_subtle;
-                            }
-
-                            if root.history.length == 0: Text {
-                                text: "No conversion history yet. Use the radial wheel (Hold Alt in Explorer) or Convert studio!";
-                                font_size: 13px;
-                                color: Theme.text_muted;
-                            }
-
-                            for item in root.history: Rectangle {
-                                height: 60px;
-                                border_radius: 8px;
-                                background: #161922;
+                                height: 74px;
+                                border_radius: 6px;
+                                background: #0d1017;
                                 border_width: 1px;
-                                border_color: #232736;
+                                border_color: #1a202c;
 
                                 HorizontalLayout {
                                     padding_left: 16px;
                                     padding_right: 16px;
-                                    spacing: 12px;
-                                    alignment: space-between;
-
-                                    HorizontalLayout {
-                                        spacing: 12px;
-                                        Text {
-                                            text: item.is_success ? "✓" : "✗";
-                                            font_size: 16px;
-                                            font_weight: 800;
-                                            color: item.is_success ? Theme.status_green : Theme.status_red;
-                                            vertical_alignment: center;
-                                        }
-
-                                        VerticalLayout {
-                                            alignment: center;
-                                            spacing: 2px;
-                                            Text {
-                                                text: item.source_name;
-                                                font_size: 13px;
-                                                font_weight: 600;
-                                                color: #f1f5f9;
-                                            }
-                                            Text {
-                                                text: item.output_path;
-                                                font_size: 11px;
-                                                color: #94a3b8;
-                                            }
-                                        }
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        alignment: end;
-
-                                        Rectangle {
-                                            height: 22px;
-                                            border_radius: 4px;
-                                            background: #1e293b;
-                                            HorizontalLayout {
-                                                padding_left: 6px;
-                                                padding_right: 6px;
-                                                Text {
-                                                    text: item.source_ext + " → " + item.target_ext;
-                                                    font_size: 10px;
-                                                    font_weight: 700;
-                                                    color: #60a5fa;
-                                                    vertical_alignment: center;
-                                                }
-                                            }
-                                        }
-
-                                        Button {
-                                            text: "Open";
-                                            clicked => { root.open_output_file(item.output_path); }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // PAGE 3: FOLDERS
-                if root.selected_nav == 3: VerticalLayout {
-                    spacing: 16px;
-
-                    Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
-                        border_width: 1px;
-                        border_color: Theme.border_subtle;
-
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 16px;
-
-                            HorizontalLayout {
-                                alignment: space-between;
-                                Text {
-                                    text: "Managed Directories";
-                                    font_size: 16px;
-                                    font_weight: 700;
-                                    color: #ffffff;
-                                }
-                                Button {
-                                    text: "+ Add Directory";
-                                    primary: true;
-                                    clicked => { root.add_folder_clicked(); }
-                                }
-                            }
-
-                            for folder in root.folders: Rectangle {
-                                height: 56px;
-                                border_radius: 8px;
-                                background: #161922;
-                                border_width: 1px;
-                                border_color: #232736;
-
-                                HorizontalLayout {
-                                    padding_left: 16px;
-                                    padding_right: 16px;
-                                    spacing: 12px;
-                                    alignment: space-between;
-
-                                    HorizontalLayout {
-                                        spacing: 12px;
-                                        Text {
-                                            text: "📁";
-                                            font_size: 18px;
-                                            vertical_alignment: center;
-                                        }
-                                        VerticalLayout {
-                                            alignment: center;
-                                            spacing: 2px;
-                                            Text {
-                                                text: folder.name;
-                                                font_size: 14px;
-                                                font_weight: 600;
-                                                color: #f1f5f9;
-                                            }
-                                            Text {
-                                                text: folder.path;
-                                                font_size: 11px;
-                                                color: #94a3b8;
-                                            }
-                                        }
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 12px;
-                                        alignment: end;
-
-                                        Button {
-                                            text: "Explore";
-                                            clicked => { root.open_folder_path(folder.path); }
-                                        }
-
-                                        Button {
-                                            text: "Remove";
-                                            clicked => { root.remove_folder(folder.id); }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // PAGE 4: PRESETS
-                if root.selected_nav == 4: VerticalLayout {
-                    spacing: 16px;
-
-                    Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
-                        border_width: 1px;
-                        border_color: Theme.border_subtle;
-
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 16px;
-
-                            Text {
-                                text: "Conversion Recipes & Presets";
-                                font_size: 16px;
-                                font_weight: 700;
-                                color: #ffffff;
-                            }
-
-                            for preset in root.presets: Rectangle {
-                                height: 68px;
-                                border_radius: 8px;
-                                background: #161922;
-                                border_width: 1px;
-                                border_color: #232736;
-
-                                HorizontalLayout {
-                                    padding_left: 16px;
-                                    padding_right: 16px;
-                                    spacing: 12px;
                                     alignment: space-between;
 
                                     VerticalLayout {
                                         alignment: center;
-                                        spacing: 3px;
-                                        Text {
-                                            text: preset.name + " (" + preset.target_format + ")";
-                                            font_size: 14px;
-                                            font_weight: 700;
-                                            color: #f1f5f9;
-                                        }
-                                        Text {
-                                            text: preset.desc;
-                                            font_size: 11px;
-                                            color: #94a3b8;
-                                        }
+                                        spacing: 4px;
+                                        Text { text: root.convert_source_name; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                        Text { text: root.convert_source_path != "" ? root.convert_source_path : "No file loaded. Click 'Browse Source File' to select a file."; font_size: 11px; color: #64748B; }
                                     }
 
-                                    Button {
-                                        text: "Apply to Convert Studio";
-                                        primary: true;
-                                        clicked => { root.apply_preset_clicked(preset.id); }
+                                    StatusBadge {
+                                        text: root.convert_source_ext;
+                                        badge_color: #248BFF20;
+                                        text_color: #38BDF8;
                                     }
+                                }
+                            }
+
+                            // Target Format Selectors
+                            VerticalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                vertical-stretch: 0;
+
+                                Text { text: "Select Output Format:"; font_size: 12px; font_weight: 600; color: #C8CDD7; }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    vertical-stretch: 0;
+
+                                    for fmt in ["PNG", "JPG", "WEBP", "ICO", "MP3", "WAV", "MP4", "CSV", "JSON", "PDF"]: Rectangle {
+                                        height: 32px;
+                                        border_radius: 6px;
+                                        background: root.convert_target_fmt == fmt ? #248BFF : #1a202c;
+                                        border_width: 1px;
+                                        border_color: root.convert_target_fmt == fmt ? #3B9EFF : #283344;
+
+                                        TouchArea { clicked => { root.convert_target_fmt = fmt; root.select_target_format(fmt); } }
+
+                                        HorizontalLayout {
+                                            padding_left: 12px;
+                                            padding_right: 12px;
+                                            alignment: center;
+                                            Text {
+                                                text: fmt;
+                                                font_size: 11px;
+                                                font_weight: 700;
+                                                color: root.convert_target_fmt == fmt ? #FFFFFF : #94A3B8;
+                                                vertical_alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Convert Action & Progress
+                            VerticalLayout {
+                                spacing: 10px;
+                                alignment: start;
+                                vertical-stretch: 0;
+
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+
+                                    AppButton {
+                                        text: root.is_converting ? "Converting..." : "Convert File";
+                                        icon_text: "⚡";
+                                        enabled: root.convert_source_path != "" && !root.is_converting;
+                                        is_primary: true;
+                                        clicked => { root.start_manual_conversion(); }
+                                    }
+
+                                    if root.convert_last_output != "": AppButton {
+                                        text: "Open Converted File";
+                                        icon_text: "↗";
+                                        is_primary: false;
+                                        clicked => { root.open_output_file(root.convert_last_output); }
+                                    }
+                                }
+
+                                Text {
+                                    text: root.convert_status_msg;
+                                    font_size: 12px;
+                                    color: root.is_converting ? #38BDF8 : #10B981;
                                 }
                             }
                         }
                     }
+
+                    Rectangle { vertical-stretch: 1; }
+                }
+
+                // PAGE 2: HISTORY
+                if root.selected_nav == 2: VerticalLayout {
+                    padding: 28px;
+                    spacing: 16px;
+                    alignment: start;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+                        vertical-stretch: 0;
+
+                        Text { text: "CONVERSION AUDIT LOG"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                        SecondaryButton {
+                            text: "Clear History";
+                            icon_text: "🗑";
+                            clicked => { root.clear_history_clicked(); }
+                        }
+                    }
+
+                    if root.history.length == 0: Rectangle {
+                        height: 160px;
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Text { text: "No conversion history recorded yet"; font_size: 14px; font_weight: 600; color: #FFFFFF; horizontal_alignment: center; }
+                            Text { text: "Trigger conversions using the radial wheel in Explorer or Convert Studio"; font_size: 11px; color: #64748B; horizontal_alignment: center; }
+                        }
+                    }
+
+                    for item in root.history: Rectangle {
+                        height: 52px;
+                        border_radius: 6px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+                        vertical-stretch: 0;
+
+                        HorizontalLayout {
+                            padding_left: 16px;
+                            padding_right: 16px;
+                            alignment: space-between;
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 14px;
+
+                                Text { text: item.source_name; font_size: 13px; font_weight: 600; color: #FFFFFF; }
+                                StatusBadge {
+                                    text: item.source_ext + " → " + item.target_ext;
+                                    badge_color: item.is_success ? #10B98120 : #EF444420;
+                                    text_color: item.is_success ? #10B981 : #EF4444;
+                                }
+                                Text { text: item.status_text; font_size: 11px; color: #8C96A8; }
+                            }
+
+                            if item.output_path != "": SecondaryButton {
+                                text: "Locate in Explorer";
+                                clicked => { root.open_output_file(item.output_path); }
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
+                }
+
+                // PAGE 3: FOLDERS
+                if root.selected_nav == 3: VerticalLayout {
+                    padding: 28px;
+                    spacing: 16px;
+                    alignment: start;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+                        vertical-stretch: 0;
+
+                        Text { text: "MANAGED & WATCHED DIRECTORIES"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                        AppButton {
+                            text: "+ Add Folder";
+                            is_primary: true;
+                            clicked => { root.add_folder_clicked(); }
+                        }
+                    }
+
+                    if root.folders.length == 0: Rectangle {
+                        height: 160px;
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Text { text: "No managed folders configured"; font_size: 14px; font_weight: 600; color: #FFFFFF; horizontal_alignment: center; }
+                            Text { text: "Click '+ Add Folder' above to add directories for quick access"; font_size: 11px; color: #64748B; horizontal_alignment: center; }
+                        }
+                    }
+
+                    for folder in root.folders: Rectangle {
+                        height: 64px;
+                        border_radius: 6px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+                        vertical-stretch: 0;
+
+                        HorizontalLayout {
+                            padding_left: 18px;
+                            padding_right: 18px;
+                            alignment: space-between;
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 14px;
+
+                                Text { text: "📁"; font_size: 18px; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text { text: folder.name; font_size: 13px; font_weight: 700; color: #FFFFFF; }
+                                    Text { text: folder.path; font_size: 11px; color: #8C96A8; }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 10px;
+
+                                SecondaryButton {
+                                    text: "Open Explorer";
+                                    clicked => { root.open_folder_path(folder.path); }
+                                }
+
+                                DangerButton {
+                                    text: "Remove";
+                                    clicked => { root.remove_folder(folder.id); }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
+                }
+
+                // PAGE 4: PRESETS
+                if root.selected_nav == 4: VerticalLayout {
+                    padding: 28px;
+                    spacing: 16px;
+                    alignment: start;
+
+                    Text { text: "CONVERSION PRESETS"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                    for preset in root.presets: Rectangle {
+                        height: 68px;
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+                        vertical-stretch: 0;
+
+                        HorizontalLayout {
+                            padding_left: 20px;
+                            padding_right: 20px;
+                            alignment: space-between;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 3px;
+                                Text { text: preset.name; font_size: 14px; font_weight: 700; color: #FFFFFF; }
+                                Text { text: preset.desc; font_size: 11px; color: #8C96A8; }
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 12px;
+
+                                StatusBadge {
+                                    text: preset.target_format + " (" + preset.quality + "%)";
+                                    badge_color: #248BFF20;
+                                    text_color: #38BDF8;
+                                }
+
+                                AppButton {
+                                    text: "Use Preset";
+                                    is_primary: true;
+                                    clicked => { root.apply_preset_clicked(preset.id); }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
                 }
 
                 // PAGE 5: SETTINGS
                 if root.selected_nav == 5: VerticalLayout {
+                    padding: 28px;
                     spacing: 20px;
+                    alignment: start;
 
                     Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
+                        border_radius: 8px;
+                        background: #141824;
                         border_width: 1px;
-                        border_color: Theme.border_subtle;
+                        border_color: #1e2638;
 
                         VerticalLayout {
                             padding: 24px;
-                            spacing: 16px;
+                            spacing: 18px;
+                            alignment: start;
 
-                            Text {
-                                text: "General Preferences";
-                                font_size: 16px;
-                                font_weight: 700;
-                                color: #ffffff;
-                            }
+                            Text { text: "APPLICATION PREFERENCES"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
 
-                            CheckBox {
-                                text: "Show desktop balloon notifications on conversion completion";
-                                checked: root.show_notifications;
-                                toggled => { root.show_notifications = self.checked; }
-                            }
-
-                            CheckBox {
-                                text: "Minimize to system tray instead of closing";
-                                checked: root.minimize_to_tray;
-                                toggled => { root.minimize_to_tray = self.checked; }
-                            }
-
-                            CheckBox {
-                                text: "Launch OrbitConvert on Windows startup";
-                                checked: root.launch_on_startup;
-                                toggled => { root.launch_on_startup = self.checked; }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        border_radius: 12px;
-                        background: Theme.bg_card;
-                        border_width: 1px;
-                        border_color: Theme.border_subtle;
-
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 16px;
-
-                            Text {
-                                text: "Image & Vector Tuning";
-                                font_size: 16px;
-                                font_weight: 700;
-                                color: #ffffff;
-                            }
-
+                            // Radial Wheel Controls
                             VerticalLayout {
-                                spacing: 4px;
+                                spacing: 10px;
+                                alignment: start;
+                                vertical-stretch: 0;
+
+                                Text { text: "Radial Wheel Geometry"; font_size: 13px; font_weight: 700; color: #FFFFFF; }
+
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    Text {
-                                        text: "Default JPEG Quality:";
-                                        font_size: 13px;
-                                        color: Theme.text_secondary;
-                                    }
-                                    Text {
-                                        text: root.jpeg_quality + "%";
-                                        font_size: 13px;
-                                        font_weight: 700;
-                                        color: #60a5fa;
-                                    }
+                                    Text { text: "Wheel Diameter: " + Math.round(root.wheel_diameter) + "px"; font_size: 12px; color: #C8CDD7; }
                                 }
                                 Slider {
-                                    minimum: 50;
+                                    value: root.wheel_diameter;
+                                    minimum: 280;
+                                    maximum: 440;
+                                    changed(val) => { root.wheel_diameter = val; }
+                                }
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text { text: "Center Dead Zone Radius: " + Math.round(root.dead_zone) + "px"; font_size: 12px; color: #C8CDD7; }
+                                }
+                                Slider {
+                                    value: root.dead_zone;
+                                    minimum: 40;
                                     maximum: 100;
+                                    changed(val) => { root.dead_zone = val; }
+                                }
+
+                                SecondaryButton {
+                                    text: "Preview Radial Wheel (No Alt Required)";
+                                    icon_text: "◎";
+                                    clicked => { root.preview_wheel_clicked(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
+
+                            // Quality Settings
+                            VerticalLayout {
+                                spacing: 10px;
+                                alignment: start;
+                                vertical-stretch: 0;
+
+                                Text { text: "Output Quality & Scaling"; font_size: 13px; font_weight: 700; color: #FFFFFF; }
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text { text: "Default JPEG Quality: " + root.jpeg_quality + "%"; font_size: 12px; color: #C8CDD7; }
+                                }
+                                Slider {
                                     value: root.jpeg_quality;
+                                    minimum: 20;
+                                    maximum: 100;
                                     changed(val) => { root.jpeg_quality = Math.round(val); }
                                 }
-                            }
 
-                            VerticalLayout {
-                                spacing: 4px;
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    Text {
-                                        text: "Default SVG Raster Scale:";
-                                        font_size: 13px;
-                                        color: Theme.text_secondary;
-                                    }
-                                    Text {
-                                        text: root.svg_scale + "x";
-                                        font_size: 13px;
-                                        font_weight: 700;
-                                        color: #60a5fa;
-                                    }
+                                    Text { text: "SVG Rasterization Scale: " + Math.round(root.svg_scale * 10.0) / 10.0 + "x"; font_size: 12px; color: #C8CDD7; }
                                 }
                                 Slider {
-                                    minimum: 1.0;
-                                    maximum: 4.0;
                                     value: root.svg_scale;
-                                    changed(val) => { root.svg_scale = Math.round(val * 10) / 10; }
+                                    minimum: 0.5;
+                                    maximum: 4.0;
+                                    changed(val) => { root.svg_scale = val; }
                                 }
                             }
 
-                            Button {
-                                text: "💾 Save Preferences";
-                                primary: true;
+                            Rectangle { height: 1px; background: #1a202c; vertical-stretch: 0; }
+
+                            // Checkboxes
+                            VerticalLayout {
+                                spacing: 10px;
+                                alignment: start;
+                                vertical-stretch: 0;
+
+                                CheckBox {
+                                    text: "Show Windows desktop completion notifications";
+                                    checked: root.show_notifications;
+                                    toggled => { root.show_notifications = self.checked; }
+                                }
+
+                                CheckBox {
+                                    text: "Launch OrbitConvert on Windows startup";
+                                    checked: root.launch_on_startup;
+                                    toggled => { root.launch_on_startup = self.checked; }
+                                }
+
+                                CheckBox {
+                                    text: "Minimize to system tray on close";
+                                    checked: root.minimize_to_tray;
+                                    toggled => { root.minimize_to_tray = self.checked; }
+                                }
+                            }
+
+                            AppButton {
+                                text: "Save All Settings";
+                                is_primary: true;
                                 clicked => { root.save_settings_clicked(); }
                             }
                         }
                     }
+
+                    Rectangle { vertical-stretch: 1; }
+                }
+
+                // PAGE 6: DIAGNOSTICS
+                if root.selected_nav == 6: VerticalLayout {
+                    padding: 28px;
+                    spacing: 20px;
+                    alignment: start;
+
+                    Rectangle {
+                        border_radius: 8px;
+                        background: #141824;
+                        border_width: 1px;
+                        border_color: #1e2638;
+
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 16px;
+                            alignment: start;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                vertical-stretch: 0;
+
+                                Text { text: "EXPLORER ACTIVATION & PIPELINE DIAGNOSTICS"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
+
+                                AppButton {
+                                    text: "Run Cursor Diagnostic Check";
+                                    icon_text: "🔍";
+                                    is_primary: true;
+                                    clicked => { root.run_diagnostics_clicked(); }
+                                }
+                            }
+
+                            // Diagnostic status cards
+                            VerticalLayout {
+                                spacing: 10px;
+                                alignment: start;
+                                vertical-stretch: 0;
+
+                                Rectangle {
+                                    height: 48px;
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    HorizontalLayout {
+                                        padding_left: 16px;
+                                        padding_right: 16px;
+                                        alignment: space-between;
+                                        Text { text: "Low-Level Keyboard Hook"; font_size: 12px; font_weight: 600; color: #FFFFFF; vertical_alignment: center; }
+                                        StatusBadge { text: "INSTALLED & ACTIVE"; badge_color: #10B98120; text_color: #10B981; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 48px;
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    HorizontalLayout {
+                                        padding_left: 16px;
+                                        padding_right: 16px;
+                                        alignment: space-between;
+                                        Text { text: "FFmpeg Media Transcoding Engine"; font_size: 12px; font_weight: 600; color: #FFFFFF; vertical_alignment: center; }
+                                        StatusBadge { text: root.diag_ffmpeg_installed ? "INSTALLED (v9.0.1)" : "NOT FOUND"; badge_color: root.diag_ffmpeg_installed ? #10B98120 : #EF444420; text_color: root.diag_ffmpeg_installed ? #10B981 : #EF4444; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 48px;
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    HorizontalLayout {
+                                        padding_left: 16px;
+                                        padding_right: 16px;
+                                        alignment: space-between;
+                                        Text { text: "Active Window Class: " + root.diag_window_class; font_size: 12px; color: #C8CDD7; vertical_alignment: center; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 48px;
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    HorizontalLayout {
+                                        padding_left: 16px;
+                                        padding_right: 16px;
+                                        alignment: space-between;
+                                        Text { text: "Hovered UI Element: " + root.diag_element_name; font_size: 12px; color: #C8CDD7; vertical_alignment: center; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 48px;
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    HorizontalLayout {
+                                        padding_left: 16px;
+                                        padding_right: 16px;
+                                        alignment: space-between;
+                                        Text { text: "Resolved Item Path: " + root.diag_resolved_path; font_size: 12px; color: #C8CDD7; vertical_alignment: center; }
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 48px;
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    HorizontalLayout {
+                                        padding_left: 16px;
+                                        padding_right: 16px;
+                                        alignment: space-between;
+                                        Text { text: "Detected Format: " + root.diag_detected_format; font_size: 12px; color: #C8CDD7; vertical_alignment: center; }
+                                        StatusBadge { text: root.diag_status; badge_color: #248BFF20; text_color: #38BDF8; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
                 }
             }
         }

@@ -1,0 +1,174 @@
+import { Theme } from "theme.slint";
+
+export component AppButton inherits Rectangle {
+    in property <string> text: "Action";
+    in property <string> icon_text: "";
+    in property <bool> is_primary: true;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 34px;
+    vertical-stretch: 0;
+    horizontal-stretch: 0;
+    border_radius: 6px;
+
+    background: !root.enabled ? #1a202c :
+        touch.pressed ? (root.is_primary ? #1a74e2 : #151a24) :
+        touch.has_hover ? (root.is_primary ? #3b9eff : #242c3d) :
+        (root.is_primary ? #248bff : #1c2230);
+
+    border_width: root.is_primary ? 0px : 1px;
+    border_color: touch.has_hover ? #38455e : #2b3447;
+
+    animate background { duration: 100ms; }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding_left: 14px;
+        padding_right: 14px;
+        spacing: 8px;
+        alignment: center;
+
+        if root.icon_text != "": Text {
+            text: root.icon_text;
+            font_size: 14px;
+            font_weight: 700;
+            color: !root.enabled ? #64748b : #ffffff;
+            vertical_alignment: center;
+        }
+
+        Text {
+            text: root.text;
+            font_size: 13px;
+            font_weight: 600;
+            color: !root.enabled ? #64748b : #ffffff;
+            vertical_alignment: center;
+        }
+    }
+}
+
+export component SecondaryButton inherits Rectangle {
+    in property <string> text: "Button";
+    in property <string> icon_text: "";
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 30px;
+    vertical-stretch: 0;
+    horizontal-stretch: 0;
+    border_radius: 5px;
+
+    background: touch.pressed ? #141923 :
+        touch.has_hover ? #242c3d :
+        #1a202c;
+
+    border_width: 1px;
+    border_color: touch.has_hover ? #3c4860 : #2b3447;
+
+    animate background { duration: 90ms; }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding_left: 10px;
+        padding_right: 10px;
+        spacing: 6px;
+        alignment: center;
+
+        if root.icon_text != "": Text {
+            text: root.icon_text;
+            font_size: 12px;
+            color: #94a3b8;
+            vertical_alignment: center;
+        }
+
+        Text {
+            text: root.text;
+            font_size: 12px;
+            font_weight: 600;
+            color: #cbd5e1;
+            vertical_alignment: center;
+        }
+    }
+}
+
+export component DangerButton inherits Rectangle {
+    in property <string> text: "Delete";
+    callback clicked();
+
+    height: 30px;
+    vertical-stretch: 0;
+    horizontal-stretch: 0;
+    border_radius: 5px;
+
+    background: touch.pressed ? #2d0f12 :
+        touch.has_hover ? #47151a :
+        #351115;
+
+    border_width: 1px;
+    border_color: touch.has_hover ? #82272d : #5c1d22;
+
+    animate background { duration: 90ms; }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding_left: 10px;
+        padding_right: 10px;
+        alignment: center;
+
+        Text {
+            text: root.text;
+            font_size: 11px;
+            font_weight: 600;
+            color: #f87171;
+            vertical_alignment: center;
+        }
+    }
+}
+
+export component StatusBadge inherits Rectangle {
+    in property <string> text: "READY";
+    in property <color> badge_color: #248bff;
+    in property <color> text_color: #ffffff;
+
+    height: 20px;
+    vertical-stretch: 0;
+    horizontal-stretch: 0;
+    border_radius: 4px;
+    background: root.badge_color;
+
+    HorizontalLayout {
+        padding_left: 6px;
+        padding_right: 6px;
+        alignment: center;
+
+        Text {
+            text: root.text;
+            font_size: 10px;
+            font_weight: 700;
+            color: root.text_color;
+            vertical_alignment: center;
+        }
+    }
+}
+
+export component Card inherits Rectangle {
+    in property <string> title: "";
+    in property <string> subtitle: "";
+
+    background: #141822;
+    border_width: 1px;
+    border_color: #1f2636;
+    border_radius: 8px;
+    vertical-stretch: 0;
+}
