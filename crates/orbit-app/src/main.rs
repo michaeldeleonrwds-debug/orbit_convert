@@ -282,13 +282,22 @@ fn main() {
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
+                let dur_secs = *duration_ms as f64 / 1000.0;
+                let dur_str = if dur_secs < 0.1 {
+                    format!("{:.2}s", dur_secs)
+                } else if dur_secs < 10.0 {
+                    format!("{:.1}s", dur_secs)
+                } else {
+                    format!("{:.1}s", dur_secs)
+                };
+
                 if show_notifs {
                     let title = format!("OrbitConvert: {} Ready", record.target_format);
-                    let msg = format!("Saved {} in {}ms (100%)", fname, duration_ms);
+                    let msg = format!("Saved {} in {}", fname, dur_str);
                     tray::send_global_notification(&title, &msg, false);
                 }
                 (
-                    format!("Completed in {}ms", duration_ms),
+                    format!("Completed in {}", dur_str),
                     output_path.display().to_string(),
                     *duration_ms as i32,
                 )

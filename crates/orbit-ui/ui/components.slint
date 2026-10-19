@@ -254,24 +254,26 @@ export component AppCheckBox inherits Rectangle {
         spacing: 10px;
         alignment: start;
 
-        Rectangle {
-            y: (parent.height - 18px) / 2;
-            width: 18px;
-            height: 18px;
-            border-radius: 4px;
-            background: root.checked ? #248BFF : #161D2B;
-            border_width: 1px;
-            border_color: root.checked ? #248BFF : #2A364E;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border_radius: 4px;
+                background: root.checked ? #248BFF : #161D2B;
+                border_width: 1px;
+                border_color: root.checked ? #248BFF : #2A364E;
 
-            animate background { duration: 100ms; }
+                animate background { duration: 100ms; }
 
-            if root.checked: Text {
-                text: "✓";
-                font_size: 11px;
-                font_weight: 800;
-                color: #FFFFFF;
-                horizontal_alignment: center;
-                vertical_alignment: center;
+                if root.checked: Text {
+                    text: "✓";
+                    font_size: 11px;
+                    font_weight: 800;
+                    color: #FFFFFF;
+                    horizontal_alignment: center;
+                    vertical_alignment: center;
+                }
             }
         }
 
