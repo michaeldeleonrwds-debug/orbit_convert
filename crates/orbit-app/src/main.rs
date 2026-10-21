@@ -14,15 +14,16 @@ use orbit_ui::{
     FormatCapabilityItem, HistoryItem, MainWindow, PresetItem, RadialWheel,
 };
 use orbit_windows::cursor::{
-    calculate_clamped_window_pos, calculate_two_level_selection, get_current_cursor_pos, Point,
-    TwoLevelSelection,
+    calculate_clamped_window_pos_physical, calculate_two_level_selection_normalized,
+    get_current_cursor_pos, get_monitor_scale_factor, is_more_sector_active,
+    normalize_cursor_to_logical, set_current_cursor_pos, Point, TwoLevelSelection,
 };
 use orbit_windows::dialogs::{pick_file, pick_folder};
 use orbit_windows::explorer::{ExplorerDiagnosticReport, ExplorerResolver};
 use orbit_windows::keyboard::{
     is_cursor_or_foreground_explorer, KeyboardHookManager, RawKeyEvent,
 };
-use slint::{ComponentHandle, LogicalPosition, ModelRc, VecModel};
+use slint::{ComponentHandle, LogicalPosition, ModelRc, PhysicalPosition, VecModel};
 use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -48,6 +49,7 @@ struct InteractionData {
     state: AppState,
     wheel_kind: WheelKind,
     center_pos: Point,
+    scale_factor: f32,
     source_path: Option<PathBuf>,
     source_format: Option<FileFormat>,
     inner_targets: Vec<FileFormat>,
@@ -271,6 +273,7 @@ fn main() {
         state: AppState::Idle,
         wheel_kind: WheelKind::Convert,
         center_pos: Point::new(0.0, 0.0),
+        scale_factor: 1.0,
         source_path: None,
         source_format: None,
         inner_targets: Vec::new(),
@@ -1096,13 +1099,23 @@ fn main() {
                 w.set_is_preview(true);
 
                 let cur_pos = get_current_cursor_pos().unwrap_or(Point::new(600.0, 400.0));
-                let (wx, wy) = calculate_clamped_window_pos(cur_pos, 460.0, 460.0);
-                w.window().set_position(LogicalPosition::new(wx as f32, wy as f32));
+                let scale_factor = get_monitor_scale_factor(cur_pos);
+                let (wx, wy, phys_center) = calculate_clamped_window_pos_physical(
+                    cur_pos, 460.0, 460.0, scale_factor,
+                );
+                w.window().set_position(PhysicalPosition::new(wx, wy));
                 let _ = w.show();
+
+                let offset_from_center = cur_pos.distance_to(&phys_center) / scale_factor;
+                if offset_from_center > 60.0 {
+                    let _ = set_current_cursor_pos(phys_center);
+                }
 
                 let mut data = interaction_for_preview.lock().unwrap();
                 data.state = AppState::WheelActive;
-                data.center_pos = Point::new(wx as f32 + 230.0, wy as f32 + 230.0);
+                data.wheel_kind = WheelKind::Convert;
+                data.center_pos = phys_center;
+                data.scale_factor = scale_factor;
                 data.source_path = None;
                 data.source_format = Some(FileFormat::Svg);
                 data.inner_targets = inner_targets;
@@ -1383,14 +1396,19 @@ fn main() {
                                     .map(|n| n.to_string_lossy().to_string())
                                     .unwrap_or_default();
 
-                                let (wx, wy) = calculate_clamped_window_pos(
-                                    cursor_pos, 460.0, 460.0,
+                                let scale_factor = get_monitor_scale_factor(cursor_pos);
+                                let (wx, wy, phys_center) = calculate_clamped_window_pos_physical(
+                                    cursor_pos, 460.0, 460.0, scale_factor,
                                 );
-                                let center_pos = Point::new(wx as f32 + 230.0, wy as f32 + 230.0);
+                                let offset_from_center = cursor_pos.distance_to(&phys_center) / scale_factor;
+                                if offset_from_center > 60.0 {
+                                    let _ = set_current_cursor_pos(phys_center);
+                                }
 
                                 data.state = AppState::WheelActive;
                                 data.wheel_kind = WheelKind::Convert;
-                                data.center_pos = center_pos;
+                                data.center_pos = phys_center;
+                                data.scale_factor = scale_factor;
                                 data.source_path = Some(item_path.clone());
                                 data.source_format = Some(src_fmt);
                                 data.inner_targets = inner_targets;
@@ -1424,9 +1442,7 @@ fn main() {
                                         format!("Move cursor to format, release {} to convert", key_label).into(),
                                     );
 
-                                    w.window().set_position(LogicalPosition::new(
-                                        wx as f32, wy as f32,
-                                    ));
+                                    w.window().set_position(PhysicalPosition::new(wx, wy));
                                     let _ = w.show();
                                 }
                             }
@@ -1541,14 +1557,19 @@ fn main() {
                                     .map(|n| n.to_string_lossy().to_string())
                                     .unwrap_or_default();
 
-                                let (wx, wy) = calculate_clamped_window_pos(
-                                    cursor_pos, 460.0, 460.0,
+                                let scale_factor = get_monitor_scale_factor(cursor_pos);
+                                let (wx, wy, phys_center) = calculate_clamped_window_pos_physical(
+                                    cursor_pos, 460.0, 460.0, scale_factor,
                                 );
-                                let center_pos = Point::new(wx as f32 + 230.0, wy as f32 + 230.0);
+                                let offset_from_center = cursor_pos.distance_to(&phys_center) / scale_factor;
+                                if offset_from_center > 60.0 {
+                                    let _ = set_current_cursor_pos(phys_center);
+                                }
 
                                 data.state = AppState::WheelActive;
                                 data.wheel_kind = WheelKind::QuickActions;
-                                data.center_pos = center_pos;
+                                data.center_pos = phys_center;
+                                data.scale_factor = scale_factor;
                                 data.source_path = Some(item_path.clone());
                                 data.source_format = Some(src_fmt);
                                 data.inner_targets.clear();
@@ -1570,6 +1591,7 @@ fn main() {
                                     w.set_outer_sectors(outer_sec);
                                     w.set_is_expanded(false);
                                     w.set_highlighted_inner_index(-1);
+                                    w.set_highlighted_outer_index(-1);
                                     let hotkey_b = config_for_loop.lock().unwrap().hotkey_wheel_b.clone();
                                     let key_label = match hotkey_b.as_str() {
                                         "Hold Tab" => "Tab",
@@ -1582,9 +1604,7 @@ fn main() {
                                         format!("Move cursor to action, release {} to execute", key_label).into(),
                                     );
 
-                                    w.window().set_position(LogicalPosition::new(
-                                        wx as f32, wy as f32,
-                                    ));
+                                    w.window().set_position(PhysicalPosition::new(wx, wy));
                                     let _ = w.show();
                                 }
                             }
@@ -1690,51 +1710,40 @@ fn main() {
                         data.outer_actions.len()
                     };
 
-                    let selection = calculate_two_level_selection(
-                        data.center_pos,
+                    // Normalize physical cursor position against physical center by dividing by display scale factor
+                    let (_offset, dist, angle_from_top) = normalize_cursor_to_logical(
                         cur_pos,
-                        72.5,  // inner dead zone radius (matches center hub radius)
-                        152.0, // inner donut outer radius (boundary between inner & outer)
-                        220.0, // outer concentric ring max radius
-                        data.is_expanded,
-                        total_inner,
-                        total_outer,
+                        data.center_pos,
+                        data.scale_factor,
                     );
 
                     // Auto-expansion check:
-                    // If user hovers over the "More" sector, expand the outer ring.
+                    // If user moves towards or hovers over the "More" sector, expand the outer ring immediately.
                     let more_index = if data.wheel_kind == WheelKind::Convert {
                         data.inner_targets.len()
                     } else {
                         data.inner_actions.len()
                     };
-                    let is_more_sector_hovered = match selection {
-                        TwoLevelSelection::Inner(idx) => data.has_more && idx == more_index,
-                        _ => false,
-                    };
 
-                    if is_more_sector_hovered && !data.is_expanded {
-                        data.is_expanded = true;
-                        if let Some(w) = wheel_weak.upgrade() {
-                            w.set_is_expanded(true);
+                    if data.has_more && !data.is_expanded {
+                        if is_more_sector_active(angle_from_top, dist, 72.5, 230.0, more_index, total_inner) {
+                            data.is_expanded = true;
+                            if let Some(w) = wheel_weak.upgrade() {
+                                w.set_is_expanded(true);
+                            }
                         }
                     }
 
-                    // Re-calculate selection if just expanded so outer ring is immediately selectable
-                    let selection = if data.is_expanded && matches!(selection, TwoLevelSelection::None) {
-                        calculate_two_level_selection(
-                            data.center_pos,
-                            cur_pos,
-                            72.5,
-                            152.0,
-                            220.0,
-                            true,
-                            total_inner,
-                            total_outer,
-                        )
-                    } else {
-                        selection
-                    };
+                    let selection = calculate_two_level_selection_normalized(
+                        dist,
+                        angle_from_top,
+                        72.5,  // inner dead zone radius (matches center hub radius)
+                        152.0, // inner donut outer radius (boundary between inner & outer)
+                        230.0, // outer concentric ring max radius (extended to edge for fluid selection)
+                        data.is_expanded,
+                        total_inner,
+                        total_outer,
+                    );
 
                     let (new_inner, new_outer) = match selection {
                         TwoLevelSelection::Inner(idx) => (idx as i32, -1),

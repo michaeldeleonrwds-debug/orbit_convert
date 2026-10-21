@@ -274,5 +274,79 @@ fn test_window_close_minimize_to_tray() {
         }
         slint::CloseRequestResponse::HideWindow
     });
+
+    let phys_pos = slint::PhysicalPosition::new(100, 100);
+    main_window.window().set_position(phys_pos);
+    let scale = main_window.window().scale_factor();
+    assert!(scale > 0.0);
 }
+
+#[test]
+fn test_multi_device_radial_wheel_dpi() {
+    use orbit_windows::cursor::{
+        calculate_clamped_window_pos_physical, calculate_two_level_selection_normalized,
+        is_more_sector_active, normalize_cursor_to_logical, Point, TwoLevelSelection,
+    };
+
+    // Test across display scaling factors within the monitor's work area
+    for scale in [1.0, 1.25, 1.5] {
+        let cursor_phys = Point::new(500.0, 350.0);
+        let (clamped_x, clamped_y, phys_center) = calculate_clamped_window_pos_physical(
+            cursor_phys, 460.0, 460.0, scale,
+        );
+
+        // Window should be centered around cursor on unclamped screen area
+        let half_phys = (460.0 * scale) / 2.0;
+        assert_eq!(clamped_x, (500.0 - half_phys).round() as i32);
+        assert_eq!(clamped_y, (350.0 - half_phys).round() as i32);
+        assert!((phys_center.x - 500.0).abs() <= 1.0);
+        assert!((phys_center.y - 350.0).abs() <= 1.0);
+
+        // 1. Inside center hub (50 logical points away)
+        let cur_hub = Point::new(phys_center.x, phys_center.y - 50.0 * scale);
+        let (_, dist, angle) = normalize_cursor_to_logical(cur_hub, phys_center, scale);
+        assert!((dist - 50.0).abs() < 1e-3);
+        let sel = calculate_two_level_selection_normalized(
+            dist, angle, 72.5, 152.0, 230.0, false, 6, 8,
+        );
+        assert_eq!(sel, TwoLevelSelection::CenterHub);
+
+        // 2. In inner ring (100 logical points away to North, angle 0 rad)
+        let cur_inner = Point::new(phys_center.x, phys_center.y - 100.0 * scale);
+        let (_, dist, angle) = normalize_cursor_to_logical(cur_inner, phys_center, scale);
+        assert!((dist - 100.0).abs() < 1e-3);
+        let sel = calculate_two_level_selection_normalized(
+            dist, angle, 72.5, 152.0, 230.0, false, 6, 8,
+        );
+        assert_eq!(sel, TwoLevelSelection::Inner(0));
+
+        // 3. In outer ring when expanded (180 logical points away to East)
+        let cur_outer = Point::new(phys_center.x + 180.0 * scale, phys_center.y);
+        let (_, dist, angle) = normalize_cursor_to_logical(cur_outer, phys_center, scale);
+        assert!((dist - 180.0).abs() < 1e-3);
+        let sel = calculate_two_level_selection_normalized(
+            dist, angle, 72.5, 152.0, 230.0, true, 6, 8,
+        );
+        // In 8 outer sectors: 0=North, 2=East
+        assert_eq!(sel, TwoLevelSelection::Outer(2));
+
+        // 4. Fast gesture towards More sector (sector 5 in 6 inner sectors)
+        let more_angle = 5.0 * (std::f32::consts::PI / 3.0);
+        let dx_phys = (more_angle - std::f32::consts::FRAC_PI_2).cos() * 190.0 * scale;
+        let dy_phys = (more_angle - std::f32::consts::FRAC_PI_2).sin() * 190.0 * scale;
+        let cur_fast_more = Point::new(phys_center.x + dx_phys, phys_center.y + dy_phys);
+        let (_, dist_fast, angle_fast) = normalize_cursor_to_logical(cur_fast_more, phys_center, scale);
+
+        assert!(is_more_sector_active(angle_fast, dist_fast, 72.5, 230.0, 5, 6));
+
+        // 5. Verify strict monitor work area clamping
+        let bottom_cursor = Point::new(500.0, 3000.0);
+        let (_cx, cy, _) = calculate_clamped_window_pos_physical(
+            bottom_cursor, 460.0, 460.0, scale,
+        );
+        let work_area = orbit_windows::cursor::get_monitor_work_area(bottom_cursor).unwrap();
+        assert!(cy + (460.0 * scale).round() as i32 <= work_area.bottom);
+    }
+}
+
 
