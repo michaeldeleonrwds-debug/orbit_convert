@@ -250,6 +250,9 @@ fn main() {
         main_window.set_hotkey_wheel_a(initial_config.hotkey_wheel_a.clone().into());
         main_window.set_hotkey_wheel_b(initial_config.hotkey_wheel_b.clone().into());
         main_window.set_hotkey_command_palette(initial_config.hotkey_command_palette.clone().into());
+        main_window.set_show_onboarding(initial_config.show_onboarding);
+        main_window.set_diag_timestamp("Ready".into());
+        main_window.set_is_running_diagnostics(false);
 
         if let Some(ref custom_path) = initial_config.custom_output_dir {
             main_window.set_output_mode("custom".into());
@@ -841,12 +844,97 @@ fn main() {
     }
 
     {
+        let config_clone = config.clone();
+        main_window.on_hotkey_selected(move |wheel_a, wheel_b, palette| {
+            let mut cfg = config_clone.lock().unwrap();
+            cfg.hotkey_wheel_a = wheel_a.to_string();
+            cfg.hotkey_wheel_b = wheel_b.to_string();
+            cfg.hotkey_command_palette = palette.to_string();
+            let _ = cfg.save();
+            orbit_windows::configure_hotkeys(orbit_windows::HotkeySettings {
+                wheel_a: cfg.hotkey_wheel_a.clone(),
+                wheel_b: cfg.hotkey_wheel_b.clone(),
+                command_palette: cfg.hotkey_command_palette.clone(),
+            });
+            info!("Live hotkeys updated: Wheel A = {}, Wheel B = {}, Command Palette = {}",
+                cfg.hotkey_wheel_a, cfg.hotkey_wheel_b, cfg.hotkey_command_palette);
+            tray::send_global_notification(
+                "OrbitConvert Hotkeys",
+                &format!("Hotkeys configured live:\n• Conversion Wheel: {}\n• Quick Actions: {}\n• Palette: {}",
+                    cfg.hotkey_wheel_a, cfg.hotkey_wheel_b, cfg.hotkey_command_palette
+                ),
+                false,
+            );
+        });
+    }
+
+    {
+        let config_clone = config.clone();
+        let m_weak = main_window.as_weak();
+        main_window.on_reset_default_folders_clicked(move || {
+            let mut cfg = config_clone.lock().unwrap();
+            cfg.reset_folders_to_default();
+            let _ = cfg.save();
+            let updated = cfg.folders.clone();
+            if let Some(m) = m_weak.upgrade() {
+                m.set_folders(make_folders_model(&updated));
+            }
+            tray::send_global_notification(
+                "OrbitConvert Folders",
+                "Default high-traffic folders (Desktop, Downloads, Documents, Pictures) restored.",
+                false,
+            );
+        });
+    }
+
+    {
+        let config_clone = config.clone();
+        let m_weak = main_window.as_weak();
+        main_window.on_dismiss_onboarding(move || {
+            let mut cfg = config_clone.lock().unwrap();
+            cfg.show_onboarding = false;
+            let _ = cfg.save();
+            if let Some(m) = m_weak.upgrade() {
+                m.set_show_onboarding(false);
+            }
+        });
+    }
+
+    {
+        let config_clone = config.clone();
+        let m_weak = main_window.as_weak();
+        main_window.on_toggle_onboarding(move || {
+            let mut cfg = config_clone.lock().unwrap();
+            cfg.show_onboarding = !cfg.show_onboarding;
+            let _ = cfg.save();
+            if let Some(m) = m_weak.upgrade() {
+                m.set_show_onboarding(cfg.show_onboarding);
+            }
+        });
+    }
+
+    {
         let resolver_for_diag = resolver.clone();
         let m_weak = main_window.as_weak();
         main_window.on_run_diagnostics_clicked(move || {
+            if let Some(m) = m_weak.upgrade() {
+                m.set_is_running_diagnostics(true);
+            }
             if let Ok(pt) = get_current_cursor_pos() {
                 let report = resolver_for_diag.diagnose_cursor(pt);
                 print_diagnostic_report(&report);
+
+                let now = std::time::SystemTime::now();
+                let time_str = match now.duration_since(std::time::UNIX_EPOCH) {
+                    Ok(d) => {
+                        let secs = d.as_secs();
+                        let h = (secs / 3600) % 24;
+                        let m = (secs / 60) % 60;
+                        let s = secs % 60;
+                        format!("{:02}:{:02}:{:02} UTC", h, m, s)
+                    }
+                    Err(_) => "Just now".to_string(),
+                };
 
                 if let Some(m) = m_weak.upgrade() {
                     m.set_diag_window_class(report.window_class.clone().into());
@@ -879,6 +967,8 @@ fn main() {
                             .unwrap_or_else(|| "Supported & Ready to Convert".to_string())
                             .into(),
                     );
+                    m.set_diag_timestamp(time_str.into());
+                    m.set_is_running_diagnostics(false);
                 }
 
                 let title = if report.rejection_reason.is_none() {
@@ -893,6 +983,8 @@ fn main() {
                     report.rejection_reason.as_deref().unwrap_or("Ready to convert")
                 );
                 tray::send_global_notification(title, &desc, false);
+            } else if let Some(m) = m_weak.upgrade() {
+                m.set_is_running_diagnostics(false);
             }
         });
     }
@@ -1266,12 +1358,14 @@ fn main() {
         wheel.on_close_requested(move || {
             if let Some(w) = wheel_for_close.upgrade() {
                 let _ = w.hide();
+                w.set_is_preview(false);
             }
             let mut data = interaction_for_close.lock().unwrap();
             data.state = AppState::Idle;
             data.current_highlighted_inner = -1;
             data.current_highlighted_outer = -1;
             data.is_expanded = false;
+            data.is_preview = false;
         });
     }
 
@@ -1669,19 +1763,27 @@ fn main() {
                             let cap_matrix = registry_clone.get_capability_matrix();
                             m.set_capability_matrix(make_capability_matrix_model(&cap_matrix, ""));
                             m.set_show_all_formats_modal(true);
+                            tray::restore_and_focus_window("OrbitConvert — Fast, Powerful File Conversion");
                         }
                     }
                     RawKeyEvent::EscapeDown | RawKeyEvent::TabDown => {
                         let mut data = interaction_clone.lock().unwrap();
-                        if data.state == AppState::WheelActive || data.state == AppState::Converting {
+                        if data.state == AppState::WheelActive || data.state == AppState::Converting || data.is_preview {
                             debug!("Escape or Alt+Tab pressed; cancelling radial wheel");
                             if let Some(w) = wheel_weak.upgrade() {
                                 let _ = w.hide();
+                                w.set_is_preview(false);
                             }
                             data.state = AppState::Idle;
                             data.current_highlighted_inner = -1;
                             data.current_highlighted_outer = -1;
                             data.is_expanded = false;
+                            data.is_preview = false;
+                        }
+                        if let Some(m) = main_weak_for_loop.upgrade() {
+                            if m.get_show_all_formats_modal() {
+                                m.set_show_all_formats_modal(false);
+                            }
                         }
                     }
                 }

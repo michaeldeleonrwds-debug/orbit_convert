@@ -80,6 +80,10 @@ pub struct AppConfig {
     /// Command Palette & Format Catalog global shortcut. Default: "Ctrl+Shift+Space"
     #[serde(default = "default_command_palette_hotkey")]
     pub hotkey_command_palette: String,
+
+    /// Whether to display the first-time onboarding banner/tips
+    #[serde(default = "default_true")]
+    pub show_onboarding: bool,
 }
 
 pub fn default_wheel_a_hotkey() -> String {
@@ -102,7 +106,7 @@ fn default_output_mode() -> String {
     "source".to_string()
 }
 
-fn default_folders() -> Vec<WatchedFolder> {
+pub fn default_folders() -> Vec<WatchedFolder> {
     let mut list = Vec::new();
     if let Some(user_dirs) = directories::UserDirs::new() {
         if let Some(downloads) = user_dirs.download_dir() {
@@ -260,6 +264,7 @@ impl Default for AppConfig {
             hotkey_wheel_a: default_wheel_a_hotkey(),
             hotkey_wheel_b: default_wheel_b_hotkey(),
             hotkey_command_palette: default_command_palette_hotkey(),
+            show_onboarding: true,
         }
     }
 }
@@ -269,6 +274,10 @@ impl AppConfig {
         self.hotkey_wheel_a = default_wheel_a_hotkey();
         self.hotkey_wheel_b = default_wheel_b_hotkey();
         self.hotkey_command_palette = default_command_palette_hotkey();
+    }
+
+    pub fn reset_folders_to_default(&mut self) {
+        self.folders = default_folders();
     }
 
     pub fn config_file_path() -> Option<PathBuf> {
@@ -309,5 +318,31 @@ impl AppConfig {
             info!("Saved settings to {}", path.display());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reset_folders_to_default() {
+        let mut cfg = AppConfig::default();
+        assert!(!cfg.folders.is_empty());
+        cfg.folders.clear();
+        assert!(cfg.folders.is_empty());
+        cfg.reset_folders_to_default();
+        assert!(!cfg.folders.is_empty());
+        assert!(cfg.folders.iter().any(|f| f.name == "Downloads"));
+    }
+
+    #[test]
+    fn test_reset_hotkeys_and_onboarding() {
+        let mut cfg = AppConfig::default();
+        assert!(cfg.show_onboarding);
+        assert_eq!(cfg.hotkey_wheel_a, "Hold Alt");
+        cfg.hotkey_wheel_a = "Hold Ctrl".to_string();
+        cfg.reset_hotkeys_to_default();
+        assert_eq!(cfg.hotkey_wheel_a, "Hold Alt");
     }
 }

@@ -71,9 +71,15 @@ fn matches_wheel_b_down(vk: u16, config_str: &str) -> bool {
 
 fn matches_command_palette(vk: u16, config_str: &str) -> bool {
     unsafe {
-        let ctrl_held = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0;
-        let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0;
-        let alt_held = GetAsyncKeyState(VK_MENU.0 as i32) < 0;
+        let ctrl_held = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0
+            || GetAsyncKeyState(VK_LCONTROL.0 as i32) < 0
+            || GetAsyncKeyState(VK_RCONTROL.0 as i32) < 0;
+        let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0
+            || GetAsyncKeyState(VK_LSHIFT.0 as i32) < 0
+            || GetAsyncKeyState(VK_RSHIFT.0 as i32) < 0;
+        let alt_held = GetAsyncKeyState(VK_MENU.0 as i32) < 0
+            || GetAsyncKeyState(VK_LMENU.0 as i32) < 0
+            || GetAsyncKeyState(VK_RMENU.0 as i32) < 0;
 
         match config_str {
             "Ctrl+Space" => ctrl_held && !shift_held && vk == VK_SPACE.0,

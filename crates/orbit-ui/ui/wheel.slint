@@ -40,6 +40,18 @@ export component RadialWheel inherits Window {
     callback close_requested();
     callback open_all_formats_requested();
 
+    forward-focus: fs_wheel;
+    fs_wheel := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close_requested();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+
     // -------------------------------------------------------------
     // LEVEL 2: Concentric Outer Ring (Radius 154px - 220px, 440px diameter)
     // -------------------------------------------------------------
@@ -76,10 +88,10 @@ export component RadialWheel inherits Window {
         }
 
         for sector in root.outer_sectors: Rectangle {
-            x: sector.pos_x - 26px;
-            y: sector.pos_y - 20px;
-            width: 52px;
-            height: 40px;
+            x: sector.pos_x - 37px;
+            y: sector.pos_y - 25px;
+            width: 74px;
+            height: 50px;
 
             VerticalLayout {
                 alignment: center;
@@ -94,8 +106,9 @@ export component RadialWheel inherits Window {
 
                 Text {
                     text: sector.label;
-                    font_size: 11px;
+                    font_size: 10px;
                     font_weight: 700;
+                    wrap: word-wrap;
                     color: root.highlighted_outer_index == sector.index ? #FFFFFF : #C8CDD7;
                     horizontal_alignment: center;
                     vertical_alignment: center;
@@ -136,10 +149,10 @@ export component RadialWheel inherits Window {
     }
 
     for sector in root.inner_sectors: Rectangle {
-        x: sector.pos_x - 30px;
-        y: sector.pos_y - 24px;
-        width: 60px;
-        height: 48px;
+        x: sector.pos_x - 39px;
+        y: sector.pos_y - 26px;
+        width: 78px;
+        height: 52px;
 
         VerticalLayout {
             alignment: center;
@@ -147,15 +160,16 @@ export component RadialWheel inherits Window {
 
             Text {
                 text: sector.icon_symbol;
-                font_size: 15px;
+                font_size: 14px;
                 horizontal_alignment: center;
                 vertical_alignment: center;
             }
 
             Text {
                 text: sector.label;
-                font_size: 12px;
+                font_size: 10.5px;
                 font_weight: 800;
+                wrap: word-wrap;
                 color: root.highlighted_inner_index == sector.index ? #FFFFFF : #C8CDD7;
                 horizontal_alignment: center;
                 vertical_alignment: center;
@@ -163,11 +177,12 @@ export component RadialWheel inherits Window {
 
             if !sector.is_more: Text {
                 text: root.wheel_mode == "ACTIONS" ? sector.extension : ("." + sector.extension);
-                font_size: root.wheel_mode == "ACTIONS" ? 9px : 10px;
+                font_size: root.wheel_mode == "ACTIONS" ? 8.5px : 9.5px;
                 font_weight: 600;
                 color: root.highlighted_inner_index == sector.index ? #FFFFFF : #8C96A8;
                 horizontal_alignment: center;
                 vertical_alignment: center;
+                wrap: word-wrap;
             }
 
             if sector.is_more: Text {
@@ -198,16 +213,16 @@ export component RadialWheel inherits Window {
 
         VerticalLayout {
             alignment: center;
-            spacing: 5px;
-            padding_left: 12px;
-            padding_right: 12px;
+            spacing: 3px;
+            padding_left: 8px;
+            padding_right: 8px;
 
             // Source format badge - Centered
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
                     width: root.wheel_mode == "ACTIONS" ? 72px : 46px;
-                    height: 24px;
+                    height: 22px;
                     border_radius: 6px;
                     background: #1e2533;
                     border_width: 1px;
@@ -229,7 +244,7 @@ export component RadialWheel inherits Window {
                 text: root.source_name;
                 horizontal_alignment: center;
                 vertical_alignment: center;
-                font_size: 11px;
+                font_size: 10.5px;
                 font_weight: 700;
                 color: #FFFFFF;
                 overflow: elide;
@@ -240,10 +255,17 @@ export component RadialWheel inherits Window {
                 text: root.status_text;
                 horizontal_alignment: center;
                 vertical_alignment: center;
-                font_size: 10px;
+                font_size: 9px;
                 font_weight: 600;
                 color: (root.highlighted_inner_index >= 0 || root.highlighted_outer_index >= 0 || root.status_text != "Move cursor to format") ? #38BDF8 : #8C96A8;
-                overflow: elide;
+                wrap: word-wrap;
+            }
+        }
+        TouchArea {
+            clicked => {
+                if (root.is_preview) {
+                    root.close_requested();
+                }
             }
         }
     }
@@ -252,26 +274,60 @@ export component RadialWheel inherits Window {
     // Interactive Preview Notification & All Formats Launcher
     // -------------------------------------------------------------
     if root.is_preview: Rectangle {
-        x: 100px;
-        y: 424px;
-        width: 260px;
-        height: 26px;
-        border_radius: 13px;
-        background: #1e293b;
+        x: 65px;
+        y: 422px;
+        width: 330px;
+        height: 30px;
+        border_radius: 15px;
+        background: #141b2d;
         border_width: 1px;
         border_color: #38bdf8;
 
-        TouchArea {
-            clicked => { root.open_all_formats_requested(); }
-        }
+        HorizontalLayout {
+            padding_left: 12px;
+            padding_right: 8px;
+            spacing: 8px;
+            alignment: space-between;
 
-        Text {
-            text: "🔍 Click to open All Formats Picker (Esc to close)";
-            font_size: 9px;
-            font_weight: 700;
-            color: #38bdf8;
-            horizontal_alignment: center;
-            vertical_alignment: center;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                vertical-stretch: 0;
+
+                TouchArea {
+                    clicked => { root.open_all_formats_requested(); }
+                }
+
+                Text {
+                    text: "🔍 Formats (Ctrl+Shift+Space)";
+                    font_size: 10px;
+                    font_weight: 700;
+                    color: #38bdf8;
+                    vertical_alignment: center;
+                }
+            }
+
+            Rectangle {
+                width: 60px;
+                height: 22px;
+                border_radius: 11px;
+                background: #ef444430;
+                border_width: 1px;
+                border_color: #ef4444;
+
+                TouchArea {
+                    clicked => { root.close_requested(); }
+                }
+
+                Text {
+                    text: "Close (Esc)";
+                    font_size: 9.5px;
+                    font_weight: 700;
+                    color: #fca5a5;
+                    horizontal_alignment: center;
+                    vertical_alignment: center;
+                }
+            }
         }
     }
 }

@@ -10,10 +10,11 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
     FindWindowW, GetCursorPos, LoadIconW, LoadImageW, PostQuitMessage, RegisterClassW,
-    SendMessageW, SetForegroundWindow, TrackPopupMenu, HICON, ICON_BIG, ICON_SMALL,
+    SendMessageW, SetForegroundWindow, ShowWindow, TrackPopupMenu, HICON, ICON_BIG, ICON_SMALL,
     IDI_APPLICATION, IMAGE_ICON, LR_LOADFROMFILE, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
-    TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_COMMAND, WM_DESTROY,
-    WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_SETICON, WM_USER, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+    SW_RESTORE, SW_SHOW, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON, WINDOW_EX_STYLE,
+    WM_COMMAND, WM_DESTROY, WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_SETICON, WM_USER, WNDCLASSW,
+    WS_OVERLAPPEDWINDOW,
 };
 
 pub const WM_TRAYICON: u32 = WM_USER + 100;
@@ -111,6 +112,24 @@ pub fn apply_window_icon() {
                 }
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+}
+
+/// Unminimizes, restores and brings the window with the specified title to the foreground.
+pub fn restore_and_focus_window(title_str: &str) {
+    unsafe {
+        let wide: Vec<u16> = title_str.encode_utf16().chain(std::iter::once(0)).collect();
+        for _ in 0..15 {
+            if let Ok(hwnd) = FindWindowW(None, PCWSTR(wide.as_ptr())) {
+                if !hwnd.0.is_null() {
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                    let _ = ShowWindow(hwnd, SW_SHOW);
+                    let _ = SetForegroundWindow(hwnd);
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
         }
     }
 }

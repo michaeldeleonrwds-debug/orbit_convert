@@ -83,6 +83,9 @@ export component MainWindow inherits Window {
     in-out property <string> diag_detected_format: "None";
     in-out property <string> diag_status: "Ready";
     in-out property <bool> diag_ffmpeg_installed: true;
+    in-out property <bool> is_running_diagnostics: false;
+    in-out property <string> diag_timestamp: "Ready";
+    in-out property <bool> show_onboarding: true;
 
     in-out property <[FolderItem]> folders: [];
     in-out property <[HistoryItem]> history: [];
@@ -107,6 +110,7 @@ export component MainWindow inherits Window {
     callback add_folder_clicked();
     callback toggle_folder(string, bool);
     callback remove_folder(string);
+    callback reset_default_folders_clicked();
     callback open_folder_path(string);
     callback browse_file_clicked();
     callback select_target_format(string);
@@ -116,6 +120,9 @@ export component MainWindow inherits Window {
     callback apply_preset_clicked(string);
     callback save_settings_clicked();
     callback reset_hotkeys_to_default();
+    callback hotkey_selected(string, string, string);
+    callback dismiss_onboarding();
+    callback toggle_onboarding();
     callback run_diagnostics_clicked();
     callback choose_custom_output_clicked();
     callback toggle_service_clicked();
@@ -125,6 +132,22 @@ export component MainWindow inherits Window {
     callback format_search_changed(string);
     callback cancel_conversion();
     callback retry_conversion(int);
+
+    forward-focus: fs_main;
+    fs_main := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                if (root.show_all_formats_modal) {
+                    root.show_all_formats_modal = false;
+                    accept
+                } else {
+                    reject
+                }
+            } else {
+                reject
+            }
+        }
+    }
 
     HorizontalLayout {
         // ==================== SIDEBAR ====================
@@ -447,7 +470,7 @@ export component MainWindow inherits Window {
                                     vertical_alignment: center;
                                 }
                                 Text {
-                                    text: root.service_active ? "Hold Alt to Convert" : "Service Paused";
+                                    text: root.service_active ? (root.hotkey_wheel_a + " to Convert") : "Service Paused";
                                     font_size: 10px;
                                     color: root.service_active ? #10B981 : #EF4444;
                                     vertical_alignment: center;
@@ -595,13 +618,18 @@ export component MainWindow inherits Window {
                             }
 
                             SecondaryButton {
+                                text: "💡 Guide";
+                                clicked => { root.toggle_onboarding(); }
+                            }
+
+                            SecondaryButton {
                                 text: "Command Palette";
                                 icon_text: "⚡";
                                 clicked => { root.show_all_formats_modal = true; root.open_all_formats_dialog(); }
                             }
 
                             SecondaryButton {
-                                text: "Run Diagnostics";
+                                text: root.is_running_diagnostics ? "Scanning..." : "Run Diagnostics";
                                 icon_text: "🔍";
                                 clicked => { root.run_diagnostics_clicked(); }
                             }
@@ -674,6 +702,91 @@ export component MainWindow inherits Window {
                                     height: 100%;
                                     border_radius: 2.5px;
                                     background: #248BFF;
+                                }
+                            }
+                        }
+                    }
+
+                    // First-Time User Interactive Onboarding Guide
+                    if root.show_onboarding: Rectangle {
+                        border_radius: 8px;
+                        background: #141b2d;
+                        border_width: 1px;
+                        border_color: #248BFF40;
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                vertical-stretch: 0;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    Text { text: "💡"; font_size: 14px; vertical_alignment: center; }
+                                    Text {
+                                        text: "Welcome to OrbitConvert — Quick Start & System Shortcuts";
+                                        font_size: 13px;
+                                        font_weight: 800;
+                                        color: #FFFFFF;
+                                        vertical_alignment: center;
+                                    }
+                                }
+
+                                SecondaryButton {
+                                    text: "Dismiss Guide";
+                                    clicked => { root.dismiss_onboarding(); }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 12px;
+
+                                // Step 1: Conversion Wheel
+                                Rectangle {
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        padding: 12px;
+                                        spacing: 4px;
+                                        Text { text: "1. Conversion Wheel"; font_size: 12px; font_weight: 700; color: #38BDF8; }
+                                        Text { text: "Hover any supported file in File Explorer and hold " + root.hotkey_wheel_a + " to summon the radial format wheel."; font_size: 11px; color: #94A3B8; wrap: word-wrap; }
+                                    }
+                                }
+
+                                // Step 2: Quick Actions Wheel
+                                Rectangle {
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        padding: 12px;
+                                        spacing: 4px;
+                                        Text { text: "2. Quick Actions Wheel"; font_size: 12px; font_weight: 700; color: #A78BFA; }
+                                        Text { text: "Hold " + root.hotkey_wheel_b + " on any file for contextual tools: Remove BG, Extract Audio, Compress."; font_size: 11px; color: #94A3B8; wrap: word-wrap; }
+                                    }
+                                }
+
+                                // Step 3: Command Palette
+                                Rectangle {
+                                    border_radius: 6px;
+                                    background: #0d1017;
+                                    border_width: 1px;
+                                    border_color: #1a202c;
+
+                                    VerticalLayout {
+                                        padding: 12px;
+                                        spacing: 4px;
+                                        Text { text: "3. Command Palette"; font_size: 12px; font_weight: 700; color: #34D399; }
+                                        Text { text: "Press " + root.hotkey_command_palette + " anywhere to summon the 60+ format searchable catalog and tools."; font_size: 11px; color: #94A3B8; wrap: word-wrap; }
+                                    }
                                 }
                             }
                         }
@@ -845,7 +958,7 @@ export component MainWindow inherits Window {
                                         StatusBadge { text: "ACTIVE"; badge_color: #248BFF20; text_color: #38BDF8; }
                                     }
                                     Text {
-                                        text: "Hover file in Explorer + Hold Alt to Trigger";
+                                        text: "Hover file in Explorer + " + root.hotkey_wheel_a + " to Trigger";
                                         font_size: 11px;
                                         color: #8C96A8;
                                     }
@@ -884,16 +997,23 @@ export component MainWindow inherits Window {
 
                                     VerticalLayout {
                                         alignment: center;
-                                        AppButton {
-                                            text: "+ Add Folder";
-                                            is_primary: true;
-                                            clicked => { root.add_folder_clicked(); }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            SecondaryButton {
+                                                text: "Restore Defaults";
+                                                clicked => { root.reset_default_folders_clicked(); }
+                                            }
+                                            AppButton {
+                                                text: "+ Add Folder";
+                                                is_primary: true;
+                                                clicked => { root.add_folder_clicked(); }
+                                            }
                                         }
                                     }
                                 }
 
                                 if root.folders.length == 0: Rectangle {
-                                    height: 100px;
+                                    height: 110px;
                                     border_radius: 6px;
                                     background: #0d1017;
                                     border_width: 1px;
@@ -901,9 +1021,15 @@ export component MainWindow inherits Window {
 
                                     VerticalLayout {
                                         alignment: center;
-                                        spacing: 4px;
+                                        spacing: 8px;
                                         Text { text: "No folders added yet"; font_size: 12px; color: #8C96A8; horizontal_alignment: center; }
-                                        Text { text: "Add folders for quick access and monitored conversions"; font_size: 10px; color: #475569; horizontal_alignment: center; }
+                                        HorizontalLayout {
+                                            alignment: center;
+                                            SecondaryButton {
+                                                text: "Restore Default Folders";
+                                                clicked => { root.reset_default_folders_clicked(); }
+                                            }
+                                        }
                                     }
                                 }
 
@@ -938,7 +1064,7 @@ export component MainWindow inherits Window {
                                                     clicked => { root.open_folder_path(folder.path); }
                                                 }
                                                 DangerButton {
-                                                    text: "✕";
+                                                    text: "Remove";
                                                     clicked => { root.remove_folder(folder.id); }
                                                 }
                                             }
@@ -1159,7 +1285,7 @@ export component MainWindow inherits Window {
                                     }
 
                                     if root.is_converting: DangerButton {
-                                        text: "✕ Cancel";
+                                        text: "Cancel";
                                         clicked => { root.cancel_conversion(); }
                                     }
 
@@ -1346,16 +1472,23 @@ export component MainWindow inherits Window {
 
                         VerticalLayout {
                             alignment: center;
-                            AppButton {
-                                text: "+ Add Folder";
-                                is_primary: true;
-                                clicked => { root.add_folder_clicked(); }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                SecondaryButton {
+                                    text: "Restore Defaults";
+                                    clicked => { root.reset_default_folders_clicked(); }
+                                }
+                                AppButton {
+                                    text: "+ Add Folder";
+                                    is_primary: true;
+                                    clicked => { root.add_folder_clicked(); }
+                                }
                             }
                         }
                     }
 
                     if root.folders.length == 0: Rectangle {
-                        height: 160px;
+                        height: 180px;
                         border_radius: 8px;
                         background: #141824;
                         border_width: 1px;
@@ -1363,9 +1496,16 @@ export component MainWindow inherits Window {
 
                         VerticalLayout {
                             alignment: center;
-                            spacing: 6px;
+                            spacing: 12px;
                             Text { text: "No managed folders configured"; font_size: 14px; font_weight: 600; color: #FFFFFF; horizontal_alignment: center; }
-                            Text { text: "Click '+ Add Folder' above to add directories for quick access"; font_size: 11px; color: #64748B; horizontal_alignment: center; }
+                            Text { text: "Add directories for instant access or restore default system locations"; font_size: 11px; color: #64748B; horizontal_alignment: center; }
+                            HorizontalLayout {
+                                alignment: center;
+                                SecondaryButton {
+                                    text: "Restore Default Folders (Desktop, Downloads, Documents)";
+                                    clicked => { root.reset_default_folders_clicked(); }
+                                }
+                            }
                         }
                     }
 
@@ -1646,7 +1786,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_a == "Hold Alt" ? #248BFF20 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_a == "Hold Alt" ? #248BFF : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Alt"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Alt"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1668,7 +1808,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_a == "Hold Ctrl" ? #248BFF20 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_a == "Hold Ctrl" ? #248BFF : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Ctrl"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Ctrl"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1690,7 +1830,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_a == "Hold Shift" ? #248BFF20 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_a == "Hold Shift" ? #248BFF : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Shift"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold Shift"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1712,7 +1852,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_a == "Hold CapsLock" ? #248BFF20 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_a == "Hold CapsLock" ? #248BFF : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold CapsLock"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_a = "Hold CapsLock"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1760,7 +1900,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_b == "Hold ` (Backtick)" ? #8B5CF625 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_b == "Hold ` (Backtick)" ? #8B5CF6 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold ` (Backtick)"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold ` (Backtick)"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1782,7 +1922,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_b == "Hold Q" ? #8B5CF625 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_b == "Hold Q" ? #8B5CF6 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold Q"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold Q"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1804,7 +1944,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_b == "Hold Tab" ? #8B5CF625 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_b == "Hold Tab" ? #8B5CF6 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold Tab"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold Tab"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1826,7 +1966,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_b == "Hold X" ? #8B5CF625 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_b == "Hold X" ? #8B5CF6 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold X"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold X"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1848,7 +1988,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_wheel_b == "Hold C" ? #8B5CF625 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_wheel_b == "Hold C" ? #8B5CF6 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold C"; } }
+                                        TouchArea { clicked => { root.hotkey_wheel_b = "Hold C"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1896,7 +2036,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_command_palette == "Ctrl+Shift+Space" ? #10B98125 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_command_palette == "Ctrl+Shift+Space" ? #10B981 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+Shift+Space"; } }
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+Shift+Space"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1918,7 +2058,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_command_palette == "Ctrl+Space" ? #10B98125 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_command_palette == "Ctrl+Space" ? #10B981 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+Space"; } }
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+Space"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1940,7 +2080,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_command_palette == "Alt+Space" ? #10B98125 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_command_palette == "Alt+Space" ? #10B981 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_command_palette = "Alt+Space"; } }
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Alt+Space"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -1962,7 +2102,7 @@ export component MainWindow inherits Window {
                                         background: root.hotkey_command_palette == "Ctrl+K" ? #10B98125 : #0d1017;
                                         border_width: 1px;
                                         border_color: root.hotkey_command_palette == "Ctrl+K" ? #10B981 : #1a202c;
-                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+K"; } }
+                                        TouchArea { clicked => { root.hotkey_command_palette = "Ctrl+K"; root.hotkey_selected(root.hotkey_wheel_a, root.hotkey_wheel_b, root.hotkey_command_palette); } }
                                         HorizontalLayout {
                                             padding_left: 14px;
                                             padding_right: 14px;
@@ -2134,6 +2274,12 @@ export component MainWindow inherits Window {
                                     checked: root.minimize_to_tray;
                                     toggled(val) => { root.minimize_to_tray = val; }
                                 }
+
+                                AppCheckBox {
+                                    text: "Show interactive onboarding & shortcuts guide on Dashboard";
+                                    checked: root.show_onboarding;
+                                    toggled(val) => { root.show_onboarding = val; root.toggle_onboarding(); }
+                                }
                             }
                         }
                     }
@@ -2227,11 +2373,15 @@ export component MainWindow inherits Window {
 
                                 VerticalLayout {
                                     alignment: center;
-                                    AppButton {
-                                        text: "Run Cursor Diagnostic Check";
-                                        icon_text: "🔍";
-                                        is_primary: true;
-                                        clicked => { root.run_diagnostics_clicked(); }
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        Text { text: "Status: " + (root.is_running_diagnostics ? "Scanning..." : root.diag_timestamp); font_size: 11px; color: #8C96A8; vertical_alignment: center; }
+                                        AppButton {
+                                            text: root.is_running_diagnostics ? "Scanning System & Explorer..." : "Run Cursor Diagnostic Check";
+                                            icon_text: "🔍";
+                                            is_primary: true;
+                                            clicked => { root.run_diagnostics_clicked(); }
+                                        }
                                     }
                                 }
                             }
@@ -2507,7 +2657,7 @@ export component MainWindow inherits Window {
                     }
 
                     DangerButton {
-                        text: "✕ Close";
+                        text: "Close (Esc)";
                         clicked => { root.show_all_formats_modal = false; }
                     }
                 }
