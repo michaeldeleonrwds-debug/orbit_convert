@@ -13,7 +13,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SendMessageW, SetForegroundWindow, ShowWindow, TrackPopupMenu, HICON, ICON_BIG, ICON_SMALL,
     IDI_APPLICATION, IMAGE_ICON, LR_LOADFROMFILE, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     SW_RESTORE, SW_SHOW, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON, WINDOW_EX_STYLE,
-    WM_COMMAND, WM_DESTROY, WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_SETICON, WM_USER, WNDCLASSW,
+    WM_COMMAND, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_RBUTTONUP, WM_SETICON, WM_USER, WNDCLASSW,
     WS_OVERLAPPEDWINDOW,
 };
 
@@ -347,7 +347,7 @@ unsafe extern "system" fn tray_window_proc(
             let event = lparam.0 as u32;
             if event == WM_RBUTTONUP {
                 show_tray_menu(hwnd);
-            } else if event == WM_LBUTTONDBLCLK {
+            } else if event == WM_LBUTTONUP || event == WM_LBUTTONDBLCLK {
                 if let Some(ref handler) = TRAY_ACTION_HANDLER {
                     handler(ID_TRAY_DASHBOARD);
                 }

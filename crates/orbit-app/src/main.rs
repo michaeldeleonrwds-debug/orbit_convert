@@ -996,25 +996,31 @@ fn main() {
         let m_weak = main_window.as_weak();
         let config_for_close = config.clone();
         main_window.window().on_close_requested(move || {
-            let show_notifications = {
+            let (show_notifications, minimize_to_tray) = {
                 let cfg = config_for_close.lock().unwrap();
-                cfg.show_notifications
+                (cfg.show_notifications, cfg.minimize_to_tray)
             };
 
-            info!("MainWindow close requested by user: minimizing to system tray instead of closing");
-            if let Some(m) = m_weak.upgrade() {
-                let _ = m.hide();
-            }
+            if minimize_to_tray {
+                info!("MainWindow close requested by user: minimizing to system tray instead of closing");
+                if let Some(m) = m_weak.upgrade() {
+                    let _ = m.hide();
+                }
 
-            if show_notifications {
-                tray::send_global_notification(
-                    "OrbitConvert Running in Background",
-                    "OrbitConvert is minimized to the system tray. Hold Alt or backtick (`) to convert files.",
-                    false,
-                );
-            }
+                if show_notifications {
+                    tray::send_global_notification(
+                        "OrbitConvert Running in Background",
+                        "OrbitConvert is minimized to the system tray. Hold Alt or backtick (`) to convert files.",
+                        false,
+                    );
+                }
 
-            slint::CloseRequestResponse::HideWindow
+                slint::CloseRequestResponse::HideWindow
+            } else {
+                info!("MainWindow close requested by user and minimize_to_tray is disabled: quitting application");
+                let _ = slint::quit_event_loop();
+                slint::CloseRequestResponse::HideWindow
+            }
         });
     }
 
@@ -1030,6 +1036,7 @@ fn main() {
         tray::ID_TRAY_DASHBOARD => {
             if let Some(m) = main_weak_for_tray.upgrade() {
                 let _ = m.show();
+                tray::restore_and_focus_window("OrbitConvert — Fast, Powerful File Conversion");
                 std::thread::spawn(|| {
                     tray::apply_window_icon();
                 });
@@ -1039,6 +1046,7 @@ fn main() {
             if let Some(m) = main_weak_for_tray.upgrade() {
                 m.set_selected_nav(5);
                 let _ = m.show();
+                tray::restore_and_focus_window("OrbitConvert — Fast, Powerful File Conversion");
                 std::thread::spawn(|| {
                     tray::apply_window_icon();
                 });
@@ -1923,7 +1931,7 @@ fn main() {
     );
 
     info!("OrbitConvert event loop running.");
-    slint::run_event_loop().expect("Slint event loop error");
+    slint::run_event_loop_until_quit().expect("Slint event loop error");
 }
 
 fn run_standalone_diagnostics(override_pt: Option<Point>) {
