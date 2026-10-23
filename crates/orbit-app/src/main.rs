@@ -1478,20 +1478,76 @@ fn main() {
                     (action, &data.source_path, data.source_format)
                 {
                     let show_notifs = config_for_click.lock().unwrap().show_notifications;
-                    quick_actions_exec::execute_quick_action(
+                    let target_label = act.label().to_string();
+
+                    if let Some(w) = wheel_for_click.upgrade() {
+                        w.set_is_converting(true);
+                        w.set_conversion_target(target_label.clone().into());
+                        w.set_conversion_progress(0.0);
+                        w.set_conversion_status("Processing... 0%".into());
+                        w.set_status_text("Processing... 0%".into());
+                        w.set_progress_path_commands(
+                            orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.005).into(),
+                        );
+                    }
+
+                    let w_for_qa = wheel_for_click.clone();
+                    let interaction_for_qa = interaction_for_click.clone();
+                    let t_lbl = target_label.clone();
+                    let progress_cb: quick_actions_exec::QuickActionProgressCallback = Arc::new(
+                        move |progress: f32, status: &str, is_done: bool| {
+                            let w_weak = w_for_qa.clone();
+                            let status_str = status.to_string();
+                            let label = t_lbl.clone();
+                            let inter = interaction_for_qa.clone();
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(w) = w_weak.upgrade() {
+                                    w.set_is_converting(true);
+                                    w.set_conversion_target(label.into());
+                                    w.set_conversion_progress(progress);
+                                    w.set_conversion_status(status_str.clone().into());
+                                    w.set_status_text(status_str.into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, progress.max(0.005)).into(),
+                                    );
+                                }
+                                if is_done {
+                                    let w_hide = w_weak.clone();
+                                    let inter_done = inter.clone();
+                                    slint::Timer::single_shot(Duration::from_millis(650), move || {
+                                        if let Some(w) = w_hide.upgrade() {
+                                            let _ = w.hide();
+                                            w.set_is_converting(false);
+                                            w.set_conversion_progress(0.0);
+                                            w.set_progress_path_commands("".into());
+                                        }
+                                        let mut data = inter_done.lock().unwrap();
+                                        data.state = AppState::Idle;
+                                        data.current_highlighted_inner = -1;
+                                        data.current_highlighted_outer = -1;
+                                        data.is_expanded = false;
+                                        data.is_preview = false;
+                                    });
+                                }
+                            });
+                        },
+                    );
+
+                    let maybe_job_id = quick_actions_exec::execute_quick_action(
                         act,
                         src_path,
                         src_fmt,
                         &job_mgr_for_click,
                         show_notifs,
+                        Some(progress_cb),
                     );
-                    if let Some(w) = wheel_for_click.upgrade() {
-                        let _ = w.hide();
+
+                    if let Some(job_id) = maybe_job_id {
+                        *active_id_for_click.lock().unwrap() = Some(job_id);
                     }
-                    data.state = AppState::Idle;
-                    data.current_highlighted_inner = -1;
-                    data.current_highlighted_outer = -1;
-                    data.is_expanded = false;
+
+                    data.state = AppState::Converting;
+                    return;
                 }
             }
         });
@@ -1887,13 +1943,76 @@ fn main() {
                                             "Quick Action initiated by backtick release"
                                         );
                                         let show_notifs = config_for_wheel.lock().unwrap().show_notifications;
-                                        quick_actions_exec::execute_quick_action(
+                                        let target_label = act.label().to_string();
+
+                                        if let Some(w) = wheel_weak.upgrade() {
+                                            w.set_is_converting(true);
+                                            w.set_conversion_target(target_label.clone().into());
+                                            w.set_conversion_progress(0.0);
+                                            w.set_conversion_status("Processing... 0%".into());
+                                            w.set_status_text("Processing... 0%".into());
+                                            w.set_progress_path_commands(
+                                                orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.005).into(),
+                                            );
+                                        }
+
+                                        let w_for_qa = wheel_weak.clone();
+                                        let interaction_for_qa = interaction_clone.clone();
+                                        let t_lbl = target_label.clone();
+                                        let progress_cb: quick_actions_exec::QuickActionProgressCallback = Arc::new(
+                                            move |progress: f32, status: &str, is_done: bool| {
+                                                let w_weak = w_for_qa.clone();
+                                                let status_str = status.to_string();
+                                                let label = t_lbl.clone();
+                                                let inter = interaction_for_qa.clone();
+                                                let _ = slint::invoke_from_event_loop(move || {
+                                                    if let Some(w) = w_weak.upgrade() {
+                                                        w.set_is_converting(true);
+                                                        w.set_conversion_target(label.into());
+                                                        w.set_conversion_progress(progress);
+                                                        w.set_conversion_status(status_str.clone().into());
+                                                        w.set_status_text(status_str.into());
+                                                        w.set_progress_path_commands(
+                                                            orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, progress.max(0.005)).into(),
+                                                        );
+                                                    }
+                                                    if is_done {
+                                                        let w_hide = w_weak.clone();
+                                                        let inter_done = inter.clone();
+                                                        slint::Timer::single_shot(Duration::from_millis(650), move || {
+                                                            if let Some(w) = w_hide.upgrade() {
+                                                                let _ = w.hide();
+                                                                w.set_is_converting(false);
+                                                                w.set_conversion_progress(0.0);
+                                                                w.set_progress_path_commands("".into());
+                                                            }
+                                                            let mut data = inter_done.lock().unwrap();
+                                                            data.state = AppState::Idle;
+                                                            data.current_highlighted_inner = -1;
+                                                            data.current_highlighted_outer = -1;
+                                                            data.is_expanded = false;
+                                                            data.is_preview = false;
+                                                        });
+                                                    }
+                                                });
+                                            },
+                                        );
+
+                                        let maybe_job_id = quick_actions_exec::execute_quick_action(
                                             act,
                                             src_path,
                                             src_fmt,
                                             &job_mgr_clone,
                                             show_notifs,
+                                            Some(progress_cb),
                                         );
+
+                                        if let Some(job_id) = maybe_job_id {
+                                            *active_id_for_loop.lock().unwrap() = Some(job_id);
+                                        }
+
+                                        data.state = AppState::Converting;
+                                        continue;
                                     }
                                 } else {
                                     debug!("Backtick released in dead zone or outside; quick action cancelled");

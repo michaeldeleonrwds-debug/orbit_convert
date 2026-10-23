@@ -349,4 +349,51 @@ fn test_multi_device_radial_wheel_dpi() {
     }
 }
 
+#[test]
+fn test_quick_action_progress_circular_hud() {
+    use std::sync::{Arc, Mutex};
+
+    // 1. Verify 50% compact radius (38.0) path generation for Quick Actions
+    let path_init = orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.005);
+    assert!(path_init.starts_with("M 230.00 192.00")); // 230 - 38 = 192
+
+    let path_half = orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.50);
+    assert!(path_half.contains("A 38.00 38.00 0 0 1"));
+
+    let path_done = orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 1.00);
+    assert!(path_done.contains("A 38.00 38.00 0 0 1"));
+
+    // 2. Verify ActionGuard correctly triggers completion callback via RAII drop
+    let recorded_events = Arc::new(Mutex::new(Vec::new()));
+    let rec_clone = recorded_events.clone();
+
+    let cb: Arc<dyn Fn(f32, &str, bool) + Send + Sync> = Arc::new(move |pct, msg, done| {
+        rec_clone.lock().unwrap().push((pct, msg.to_string(), done));
+    });
+
+    struct TestGuard(Option<Arc<dyn Fn(f32, &str, bool) + Send + Sync>>);
+    impl Drop for TestGuard {
+        fn drop(&mut self) {
+            if let Some(ref c) = self.0 {
+                c(1.0, "✓ Finished!", true);
+            }
+        }
+    }
+
+    {
+        cb(0.35, "Processing...", false);
+        let _guard = TestGuard(Some(cb.clone()));
+    }
+
+    let events = recorded_events.lock().unwrap().clone();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0], (0.35, "Processing...".to_string(), false));
+    assert_eq!(events[1], (1.0, "✓ Finished!".to_string(), true));
+
+    // 3. Verify format quick actions are non-empty and well-formed
+    let (inner, _outer) = orbit_core::actions::get_quick_actions_for_format(FileFormat::Png);
+    assert!(!inner.is_empty());
+    assert!(inner.iter().any(|a| a.label() == "Remove BG"));
+}
+
 

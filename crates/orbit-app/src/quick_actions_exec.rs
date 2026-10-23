@@ -4,7 +4,10 @@ use orbit_core::jobs::JobManager;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use tracing::{error, info};
+
+pub type QuickActionProgressCallback = Arc<dyn Fn(f32, &str, bool) + Send + Sync>;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -132,14 +135,39 @@ fn sha256_digest(data: &[u8]) -> String {
     )
 }
 
+pub struct ActionGuard(pub Option<QuickActionProgressCallback>);
+
+impl Drop for ActionGuard {
+    fn drop(&mut self) {
+        if let Some(ref cb) = self.0 {
+            cb(1.0, "✓ Finished!", true);
+        }
+    }
+}
+
+fn spawn_action<F>(progress_cb: Option<QuickActionProgressCallback>, f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    if let Some(ref cb) = progress_cb {
+        cb(0.35, "Processing...", false);
+    }
+    std::thread::spawn(move || {
+        let _guard = ActionGuard(progress_cb);
+        f();
+    });
+}
+
 /// Executes a contextual Quick Action on a target file.
+/// Returns Some(job_id) if a background JobManager task was submitted.
 pub fn execute_quick_action(
     action: QuickAction,
     source_path: &Path,
     source_format: FileFormat,
     job_manager: &JobManager,
     show_notifications: bool,
-) {
+    progress_cb: Option<QuickActionProgressCallback>,
+) -> Option<u64> {
     info!(
         action = ?action,
         path = %source_path.display(),
@@ -171,6 +199,10 @@ pub fn execute_quick_action(
                     false,
                 );
             }
+            if let Some(ref cb) = progress_cb {
+                cb(1.0, "✓ Copied!", true);
+            }
+            None
         }
 
         QuickAction::ShowInExplorer => {
@@ -178,12 +210,16 @@ pub fn execute_quick_action(
                 .arg(format!("/select,{}", source_path.display()))
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
+            if let Some(ref cb) = progress_cb {
+                cb(1.0, "✓ Opened!", true);
+            }
+            None
         }
 
         QuickAction::CalculateHash => {
             let p = source_path.to_path_buf();
             let fname_clone = fname.clone();
-            std::thread::spawn(move || match compute_file_sha256(&p) {
+            spawn_action(progress_cb.clone(), move || match compute_file_sha256(&p) {
                 Ok(hash) => {
                     copy_text_to_clipboard(&hash);
                     let preview = if hash.len() > 16 {
@@ -210,58 +246,59 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
-        QuickAction::ConvertToIcon => {
-            let _ = job_manager.submit(
+        QuickAction::ConvertToIcon => job_manager
+            .submit(
                 source_path.to_path_buf(),
                 source_format,
                 FileFormat::Ico,
                 None,
-            );
-        }
+            )
+            .ok(),
 
-        QuickAction::ExtractAudio => {
-            let _ = job_manager.submit(
+        QuickAction::ExtractAudio => job_manager
+            .submit(
                 source_path.to_path_buf(),
                 source_format,
                 FileFormat::Mp3,
                 None,
-            );
-        }
+            )
+            .ok(),
 
-        QuickAction::ConvertToPdf => {
-            let _ = job_manager.submit(
+        QuickAction::ConvertToPdf => job_manager
+            .submit(
                 source_path.to_path_buf(),
                 source_format,
                 FileFormat::Pdf,
                 None,
-            );
-        }
+            )
+            .ok(),
 
-        QuickAction::ConvertToGlb => {
-            let _ = job_manager.submit(
+        QuickAction::ConvertToGlb => job_manager
+            .submit(
                 source_path.to_path_buf(),
                 source_format,
                 FileFormat::Glb,
                 None,
-            );
-        }
+            )
+            .ok(),
 
-        QuickAction::ConvertToStl => {
-            let _ = job_manager.submit(
+        QuickAction::ConvertToStl => job_manager
+            .submit(
                 source_path.to_path_buf(),
                 source_format,
                 FileFormat::Stl,
                 None,
-            );
-        }
+            )
+            .ok(),
 
         QuickAction::RotateImage => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_rotated.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 if let Ok(img) = image::open(&src) {
                     let rotated = img.rotate90();
                     if rotated.save(&out).is_ok() {
@@ -279,13 +316,14 @@ pub fn execute_quick_action(
                     error!("Failed to open image for rotation: {}", src.display());
                 }
             });
+            None
         }
 
         QuickAction::RemoveAudio => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_muted.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -303,12 +341,13 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::GenerateThumbnail => {
             let src = source_path.to_path_buf();
             let out = parent.join(format!("{}_thumb.png", stem));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-ss", "00:00:01", "-i"])
                     .arg(&src)
@@ -326,13 +365,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::NormalizeVolume => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_normalized.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -350,13 +390,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ConvertToMono => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_mono.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -374,13 +415,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ConvertToStereo => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_stereo.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -398,13 +440,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::CompressVideo => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_compressed.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -425,12 +468,13 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ExtractHere => {
             let src = source_path.to_path_buf();
             let target_dir = parent.clone();
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 // Try tar.exe (included in modern Windows 10/11) to extract zip/tar/etc.
                 let status = Command::new("tar")
                     .args(&["-xf"])
@@ -449,12 +493,13 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ConvertToZip => {
             let _src = source_path.to_path_buf();
             let out = parent.join(format!("{}.zip", stem));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("tar")
                     .args(&["-acf"])
                     .arg(&out)
@@ -472,12 +517,13 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::RemoveBackground => {
             let src = source_path.to_path_buf();
             let out = parent.join(format!("{}_nobg.png", stem));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 match orbit_converters::bg_removal::remove_background(&src, &out) {
                     Ok(saved) => {
                         if show_notifications {
@@ -500,13 +546,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ResizeImage => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_resized.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 if let Ok(img) = image::open(&src) {
                     let (w, h) = (img.width(), img.height());
                     let target_w = (w / 2).max(1);
@@ -523,13 +570,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::CompressImage | QuickAction::OptimizeImage => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_opt.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 if let Ok(img) = image::open(&src) {
                     if img.save(&out).is_ok() {
                         if show_notifications {
@@ -542,13 +590,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::UpscaleImage => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_2x.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 if let Ok(img) = image::open(&src) {
                     let (w, h) = (img.width(), img.height());
                     let upscaled = img.resize(w * 2, h * 2, image::imageops::FilterType::Lanczos3);
@@ -563,13 +612,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::CropImage => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_cropped.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 if let Ok(img) = image::open(&src) {
                     let rgba = img.to_rgba8();
                     let (w, h) = rgba.dimensions();
@@ -605,13 +655,14 @@ pub fn execute_quick_action(
                     let _ = img.save(&out);
                 }
             });
+            None
         }
 
         QuickAction::RemoveMetadata => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_clean.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 if let Ok(img) = image::open(&src) {
                     if img.save(&out).is_ok() {
                         if show_notifications {
@@ -624,13 +675,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::TrimVideo => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_trimmed.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-ss", "00:00:00", "-to", "00:00:30", "-i"])
                     .arg(&src)
@@ -648,13 +700,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ResizeVideo => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_720p.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -672,13 +725,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ChangeFps => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_30fps.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -696,12 +750,13 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ExtractFrames => {
             let src = source_path.to_path_buf();
             let frames_dir = parent.join(format!("{}_frames", stem));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let _ = std::fs::create_dir_all(&frames_dir);
                 let out_pattern = frames_dir.join("frame_%04d.png");
                 let status = Command::new("ffmpeg")
@@ -721,13 +776,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::TrimAudio => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_trimmed.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-ss", "00:00:00", "-t", "30", "-i"])
                     .arg(&src)
@@ -745,12 +801,13 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::CompressAudio => {
             let src = source_path.to_path_buf();
             let out = parent.join(format!("{}_128k.mp3", stem));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -768,13 +825,14 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ChangeSampleRate => {
             let src = source_path.to_path_buf();
             let ext = source_format.primary_extension();
             let out = parent.join(format!("{}_44k.{}", stem, ext));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let status = Command::new("ffmpeg")
                     .args(&["-y", "-i"])
                     .arg(&src)
@@ -792,12 +850,13 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ExtractText => {
             let src = source_path.to_path_buf();
             let out = parent.join(format!("{}_text.txt", stem));
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let text_opt = if src.extension().map_or(false, |e| e == "docx") {
                     orbit_converters::documents::DocumentConverter::extract_docx_text(&src).ok()
                 } else if src.extension().map_or(false, |e| e == "pdf") {
@@ -820,11 +879,12 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         QuickAction::ListContents => {
             let src = source_path.to_path_buf();
-            std::thread::spawn(move || {
+            spawn_action(progress_cb.clone(), move || {
                 let output = Command::new("tar")
                     .args(&["-tf"])
                     .arg(&src)
@@ -843,6 +903,7 @@ pub fn execute_quick_action(
                     }
                 }
             });
+            None
         }
 
         other => {
@@ -853,6 +914,10 @@ pub fn execute_quick_action(
                     false,
                 );
             }
+            if let Some(ref cb) = progress_cb {
+                cb(1.0, "✓ Done!", true);
+            }
+            None
         }
     }
 }
