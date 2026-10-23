@@ -650,12 +650,16 @@ export component MainWindow inherits Window {
             Rectangle {
                 background: #0d0f17;
 
-                ScrollView {
-                    // PAGE 0: DASHBOARD
-                if root.selected_nav == 0: VerticalLayout {
-                    padding: 28px;
-                    spacing: 24px;
-                    alignment: start;
+                // PAGE 0: DASHBOARD
+                if root.selected_nav == 0: ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    content-height: max(self.height, 980px);
+
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 24px;
+                        alignment: start;
 
                     // Live Conversion Progress Banner
                     if root.is_converting: Rectangle {
@@ -1134,14 +1138,19 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; }
+                    }
                 }
 
                 // PAGE 1: CONVERT STUDIO
-                if root.selected_nav == 1: VerticalLayout {
-                    padding: 28px;
-                    spacing: 20px;
-                    alignment: start;
+                if root.selected_nav == 1: ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    content-height: max(self.height, 860px);
+
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 20px;
+                        alignment: start;
 
                     Rectangle {
                         border_radius: 8px;
@@ -1341,14 +1350,19 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; }
+                    }
                 }
 
                 // PAGE 2: HISTORY
-                if root.selected_nav == 2: VerticalLayout {
-                    padding: 28px;
-                    spacing: 16px;
-                    alignment: start;
+                if root.selected_nav == 2: ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    content-height: max(self.height, 860px);
+
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 16px;
+                        alignment: start;
 
                     HorizontalLayout {
                         spacing: 16px;
@@ -1452,14 +1466,19 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; }
+                    }
                 }
 
                 // PAGE 3: FOLDERS
-                if root.selected_nav == 3: VerticalLayout {
-                    padding: 28px;
-                    spacing: 16px;
-                    alignment: start;
+                if root.selected_nav == 3: ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    content-height: max(self.height, 860px);
+
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 16px;
+                        alignment: start;
 
                     HorizontalLayout {
                         spacing: 16px;
@@ -1617,14 +1636,19 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; }
+                    }
                 }
 
                 // PAGE 4: PRESETS
-                if root.selected_nav == 4: VerticalLayout {
-                    padding: 28px;
-                    spacing: 16px;
-                    alignment: start;
+                if root.selected_nav == 4: ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    content-height: max(self.height, 860px);
+
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 16px;
+                        alignment: start;
 
                     Text { text: "CONVERSION PRESETS"; font_size: 11px; font_weight: 700; color: #64748B; letter_spacing: 0.8px; }
 
@@ -1709,14 +1733,19 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; }
+                    }
                 }
 
                 // PAGE 5: SETTINGS
-                if root.selected_nav == 5: VerticalLayout {
-                    padding: 28px;
-                    spacing: 20px;
-                    alignment: start;
+                if root.selected_nav == 5: ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    content-height: max(self.height, 1140px);
+
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 20px;
+                        alignment: start;
 
                     // Hotkeys Configuration Card
                     Rectangle {
@@ -2163,14 +2192,19 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; }
+                    }
                 }
 
                 // PAGE 6: DIAGNOSTICS
-                if root.selected_nav == 6: VerticalLayout {
-                    padding: 28px;
-                    spacing: 20px;
-                    alignment: start;
+                if root.selected_nav == 6: ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    content-height: max(self.height, 920px);
+
+                    VerticalLayout {
+                        padding: 28px;
+                        spacing: 20px;
+                        alignment: start;
 
                     Rectangle {
                         border_radius: 8px;
@@ -2430,12 +2464,11 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Rectangle { vertical-stretch: 1; }
+                    }
                 }
             }
         }
     }
-}
 
     // ==================== ALL FORMATS PICKER & CAPABILITY MATRIX MODAL ====================
     if root.show_all_formats_modal: Rectangle {
