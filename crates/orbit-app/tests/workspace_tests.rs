@@ -219,7 +219,7 @@ fn test_state_machine_transitions() {
 }
 
 #[test]
-fn test_configurable_hotkeys_and_defaults() {
+fn test_permanent_explorer_safe_hotkeys() {
     use orbit_core::config::AppConfig;
     use orbit_windows::keyboard::{configure_hotkeys, HotkeySettings};
 
@@ -229,22 +229,11 @@ fn test_configurable_hotkeys_and_defaults() {
     assert_eq!(config.hotkey_wheel_b, "Hold ` (Backtick)");
     assert_eq!(config.hotkey_command_palette, "Ctrl+Shift+Space");
 
-    // 2. Customize hotkeys
+    // 2. Ensure reset_hotkeys_to_default restores permanent defaults
     config.hotkey_wheel_a = "Hold Ctrl".to_string();
     config.hotkey_wheel_b = "Hold Tab".to_string();
     config.hotkey_command_palette = "Ctrl+Space".to_string();
 
-    configure_hotkeys(HotkeySettings {
-        wheel_a: config.hotkey_wheel_a.clone(),
-        wheel_b: config.hotkey_wheel_b.clone(),
-        command_palette: config.hotkey_command_palette.clone(),
-    });
-
-    assert_eq!(config.hotkey_wheel_a, "Hold Ctrl");
-    assert_eq!(config.hotkey_wheel_b, "Hold Tab");
-    assert_eq!(config.hotkey_command_palette, "Ctrl+Space");
-
-    // 3. Reset to defaults
     config.reset_hotkeys_to_default();
     assert_eq!(config.hotkey_wheel_a, "Hold Alt");
     assert_eq!(config.hotkey_wheel_b, "Hold ` (Backtick)");

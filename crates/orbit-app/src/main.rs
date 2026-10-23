@@ -1577,7 +1577,7 @@ fn main() {
     let interaction_clone = interaction.clone();
     let active_id_for_loop = active_conversion_id.clone();
     let main_weak_for_loop = main_window.as_weak();
-    let config_for_loop = config.clone();
+    let _config_for_loop = config.clone();
 
     timer.start(
         slint::TimerMode::Repeated,
@@ -1729,16 +1729,7 @@ fn main() {
                                     w.set_is_expanded(false);
                                     w.set_highlighted_inner_index(-1);
                                     w.set_highlighted_outer_index(-1);
-                                    let hotkey_a = config_for_loop.lock().unwrap().hotkey_wheel_a.clone();
-                                    let key_label = match hotkey_a.as_str() {
-                                        "Hold Ctrl" => "Ctrl",
-                                        "Hold Shift" => "Shift",
-                                        "Hold CapsLock" => "CapsLock",
-                                        _ => "Alt",
-                                    };
-                                    w.set_status_text(
-                                        format!("Move cursor to format, release {} to convert", key_label).into(),
-                                    );
+                                    w.set_status_text("Move cursor to format, release Alt to convert".into());
 
                                     w.window().set_position(PhysicalPosition::new(wx, wy));
                                     let _ = w.show();
@@ -1897,17 +1888,7 @@ fn main() {
                                     w.set_is_expanded(false);
                                     w.set_highlighted_inner_index(-1);
                                     w.set_highlighted_outer_index(-1);
-                                    let hotkey_b = config_for_loop.lock().unwrap().hotkey_wheel_b.clone();
-                                    let key_label = match hotkey_b.as_str() {
-                                        "Hold Tab" => "Tab",
-                                        "Hold Q" => "Q",
-                                        "Hold X" => "X",
-                                        "Hold C" => "C",
-                                        _ => "`",
-                                    };
-                                    w.set_status_text(
-                                        format!("Move cursor to action, release {} to execute", key_label).into(),
-                                    );
+                                    w.set_status_text("Move cursor to action, release ` to execute".into());
 
                                     w.window().set_position(PhysicalPosition::new(wx, wy));
                                     let _ = w.show();
@@ -2179,17 +2160,7 @@ fn main() {
                                         w.set_status_text("More Actions (Move to outer ring)".into());
                                     }
                                 } else {
-                                    let hotkey_b = config_for_loop.lock().unwrap().hotkey_wheel_b.clone();
-                                    let key_label = match hotkey_b.as_str() {
-                                        "Hold Tab" => "Tab",
-                                        "Hold Q" => "Q",
-                                        "Hold X" => "X",
-                                        "Hold C" => "C",
-                                        _ => "`",
-                                    };
-                                    w.set_status_text(
-                                        format!("Move cursor to action, release {} to execute", key_label).into(),
-                                    );
+                                    w.set_status_text("Move cursor to action, release ` to execute".into());
                                 }
                             }
                         }

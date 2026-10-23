@@ -8,7 +8,7 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CAPITAL, VK_CONTROL, VK_ESCAPE, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU,
+    GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU,
     VK_OEM_3, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_SHIFT, VK_SPACE, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -50,26 +50,17 @@ fn get_current_hotkeys() -> HotkeySettings {
         .unwrap_or_default()
 }
 
-fn matches_wheel_a_down(vk: u16, config_str: &str) -> bool {
-    match config_str {
-        "Hold Ctrl" => vk == VK_CONTROL.0 || vk == VK_LCONTROL.0 || vk == VK_RCONTROL.0,
-        "Hold Shift" => vk == VK_SHIFT.0 || vk == VK_LSHIFT.0 || vk == VK_RSHIFT.0,
-        "Hold CapsLock" => vk == VK_CAPITAL.0,
-        _ => vk == VK_MENU.0 || vk == VK_LMENU.0 || vk == VK_RMENU.0, // Default: "Hold Alt"
-    }
+fn matches_wheel_a_down(vk: u16, _config_str: &str) -> bool {
+    // Strictly locked to Alt key (left or right) to prevent conflicts with Explorer (Ctrl multi-select, Shift range-select)
+    vk == VK_MENU.0 || vk == VK_LMENU.0 || vk == VK_RMENU.0
 }
 
-fn matches_wheel_b_down(vk: u16, config_str: &str) -> bool {
-    match config_str {
-        "Hold Tab" => vk == VK_TAB.0,
-        "Hold Q" => vk == 0x51,
-        "Hold X" => vk == 0x58,
-        "Hold C" => vk == 0x43,
-        _ => vk == VK_OEM_3.0, // Default: "Hold ` (Backtick)"
-    }
+fn matches_wheel_b_down(vk: u16, _config_str: &str) -> bool {
+    // Strictly locked to Backtick key (`) to prevent conflicts with Explorer navigation, renaming, or common hotkeys
+    vk == VK_OEM_3.0
 }
 
-fn matches_command_palette(vk: u16, config_str: &str) -> bool {
+fn matches_command_palette(vk: u16, _config_str: &str) -> bool {
     unsafe {
         let ctrl_held = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0
             || GetAsyncKeyState(VK_LCONTROL.0 as i32) < 0
@@ -77,16 +68,9 @@ fn matches_command_palette(vk: u16, config_str: &str) -> bool {
         let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0
             || GetAsyncKeyState(VK_LSHIFT.0 as i32) < 0
             || GetAsyncKeyState(VK_RSHIFT.0 as i32) < 0;
-        let alt_held = GetAsyncKeyState(VK_MENU.0 as i32) < 0
-            || GetAsyncKeyState(VK_LMENU.0 as i32) < 0
-            || GetAsyncKeyState(VK_RMENU.0 as i32) < 0;
 
-        match config_str {
-            "Ctrl+Space" => ctrl_held && !shift_held && vk == VK_SPACE.0,
-            "Alt+Space" => alt_held && vk == VK_SPACE.0,
-            "Ctrl+K" => ctrl_held && (vk == 0x4B || vk == 0x6B),
-            _ => ctrl_held && shift_held && vk == VK_SPACE.0, // Default: "Ctrl+Shift+Space"
-        }
+        // Standard global shortcut: Ctrl+Shift+Space
+        ctrl_held && shift_held && vk == VK_SPACE.0
     }
 }
 
@@ -136,7 +120,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
             let is_wheel_b = matches_wheel_b_down(vk, &hotkeys.wheel_b);
             let is_command_palette = matches_command_palette(vk, &hotkeys.command_palette);
             let is_escape = vk == VK_ESCAPE.0;
-            let is_tab = vk == VK_TAB.0 && hotkeys.wheel_b != "Hold Tab";
+            let is_tab = vk == VK_TAB.0;
 
             if msg == WM_SYSKEYDOWN || msg == WM_KEYDOWN {
                 if is_command_palette {
@@ -155,8 +139,8 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     }
                 } else if is_wheel_b {
                     let shift_held = GetAsyncKeyState(VK_SHIFT.0 as i32) < 0;
-                    let ignore = hotkeys.wheel_b.contains("Backtick") && shift_held;
-                    if !ignore {
+                    // Ignore Shift+Backtick (~) so user can type tilde normally
+                    if !shift_held {
                         let was_held = BACKTICK_HELD.swap(true, Ordering::SeqCst);
                         if !was_held {
                             if let Some(tx) = EVENT_SENDER.lock().unwrap().as_ref() {

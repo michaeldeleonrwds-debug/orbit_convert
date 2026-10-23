@@ -290,7 +290,11 @@ impl AppConfig {
             if path.exists() {
                 match fs::read_to_string(&path) {
                     Ok(content) => match toml::from_str::<AppConfig>(&content) {
-                        Ok(config) => {
+                        Ok(mut config) => {
+                            // Enforce fixed Explorer-safe triggers to prevent conflicts
+                            config.hotkey_wheel_a = default_wheel_a_hotkey();
+                            config.hotkey_wheel_b = default_wheel_b_hotkey();
+                            config.hotkey_command_palette = default_command_palette_hotkey();
                             info!("Loaded settings from {}", path.display());
                             return config;
                         }
