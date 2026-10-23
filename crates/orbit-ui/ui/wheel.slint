@@ -351,7 +351,7 @@ export component RadialWheel inherits Window {
     }
 
     // -------------------------------------------------------------
-    // REAL-TIME CIRCULAR LOADING HUD (0% - 100%)
+    // REAL-TIME CIRCULAR LOADING HUD (0% - 100%) - Compact 50% Scale
     // -------------------------------------------------------------
     converting_hud := Rectangle {
         x: 0px;
@@ -361,33 +361,33 @@ export component RadialWheel inherits Window {
         visible: root.is_converting;
         background: transparent;
 
-        // Outer Dark Obsidian Panel
+        // Outer Dark Obsidian Panel (diameter 96px, centered at 230, 230)
         Rectangle {
-            x: 135px;
-            y: 135px;
-            width: 190px;
-            height: 190px;
-            border_radius: 95px;
+            x: 182px;
+            y: 182px;
+            width: 96px;
+            height: 96px;
+            border_radius: 48px;
             background: #0e121a;
-            border_width: 2px;
+            border_width: 1.5px;
             border_color: root.conversion_progress >= 1.0 ? #10B981 : (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF);
 
             animate border_color { duration: 150ms; }
         }
 
-        // Circular background track ring (diameter 150px, radius 75px, centered at 230, 230)
+        // Circular background track ring (diameter 76px, radius 38px, centered at 230, 230)
         Rectangle {
-            x: 155px;
-            y: 155px;
-            width: 150px;
-            height: 150px;
-            border_radius: 75px;
-            border_width: 8px;
+            x: 192px;
+            y: 192px;
+            width: 76px;
+            height: 76px;
+            border_radius: 38px;
+            border_width: 4px;
             border_color: #1e2638;
             background: transparent;
         }
 
-        // Realtime SVG Progress Arc (radius 75px, stroke_width 8px)
+        // Realtime SVG Progress Arc (radius 38px, stroke_width 4px)
         Path {
             x: 0px;
             y: 0px;
@@ -399,7 +399,7 @@ export component RadialWheel inherits Window {
             viewbox-height: 460;
             commands: root.progress_path_commands;
             stroke: root.conversion_progress >= 1.0 ? #10B981 : (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF);
-            stroke_width: 8px;
+            stroke_width: 4px;
             fill: transparent;
 
             animate stroke { duration: 150ms; }
@@ -407,29 +407,29 @@ export component RadialWheel inherits Window {
 
         // Realtime Conversion Details Inside Ring
         VerticalLayout {
-            x: 155px;
-            y: 155px;
-            width: 150px;
-            height: 150px;
+            x: 192px;
+            y: 192px;
+            width: 76px;
+            height: 76px;
             alignment: center;
-            spacing: 5px;
-            padding_left: 8px;
-            padding_right: 8px;
+            spacing: 2px;
+            padding_left: 4px;
+            padding_right: 4px;
 
             // Target Badge
             HorizontalLayout {
                 alignment: center;
                 Rectangle {
-                    width: root.wheel_mode == "ACTIONS" ? 76px : 52px;
-                    height: 22px;
-                    border_radius: 6px;
+                    width: root.wheel_mode == "ACTIONS" ? 48px : 36px;
+                    height: 15px;
+                    border_radius: 4px;
                     background: #192233;
                     border_width: 1px;
                     border_color: root.conversion_progress >= 1.0 ? #10B981 : (root.wheel_mode == "ACTIONS" ? #A855F7 : #38bdf8);
 
                     Text {
                         text: root.conversion_target;
-                        font_size: 11px;
+                        font_size: 8px;
                         font_weight: 800;
                         color: #FFFFFF;
                         horizontal_alignment: center;
@@ -441,7 +441,7 @@ export component RadialWheel inherits Window {
             // Real-time Percentage Typography
             Text {
                 text: Math.round(root.conversion_progress * 100.0) + "%";
-                font_size: 26px;
+                font_size: 14px;
                 font_weight: 900;
                 color: root.conversion_progress >= 1.0 ? #10B981 : #FFFFFF;
                 horizontal_alignment: center;
@@ -453,7 +453,7 @@ export component RadialWheel inherits Window {
             // Real-time Status / Caption
             Text {
                 text: root.conversion_status;
-                font_size: 10px;
+                font_size: 7.5px;
                 font_weight: 700;
                 color: root.conversion_progress >= 1.0 ? #34D399 : #94A3B8;
                 horizontal_alignment: center;

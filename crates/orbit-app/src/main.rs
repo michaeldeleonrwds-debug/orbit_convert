@@ -326,7 +326,7 @@ fn main() {
                     w.set_conversion_status(status_w.clone().into());
                     w.set_status_text(status_w.into());
                     w.set_progress_path_commands(
-                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, progress).into(),
+                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, progress).into(),
                     );
                 }
             });
@@ -453,7 +453,7 @@ fn main() {
                     w.set_conversion_status("✓ Finished!".into());
                     w.set_status_text(format!("✓ Converted to {}!", target_lbl).into());
                     w.set_progress_path_commands(
-                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 1.0).into(),
+                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 1.0).into(),
                     );
                 } else {
                     w.set_is_converting(true);
@@ -1299,7 +1299,7 @@ fn main() {
                             w.set_conversion_progress(0.0);
                             w.set_conversion_status("Converting... 0%".into());
                             w.set_progress_path_commands(
-                                orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                                orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.005).into(),
                             );
 
                             let w1 = wheel_for_click.clone();
@@ -1308,7 +1308,7 @@ fn main() {
                                     w.set_conversion_progress(0.28);
                                     w.set_conversion_status("Converting... 28%".into());
                                     w.set_progress_path_commands(
-                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.28).into(),
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.28).into(),
                                     );
                                 }
                             });
@@ -1319,7 +1319,7 @@ fn main() {
                                     w.set_conversion_progress(0.65);
                                     w.set_conversion_status("Converting... 65%".into());
                                     w.set_progress_path_commands(
-                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.65).into(),
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.65).into(),
                                     );
                                 }
                             });
@@ -1330,7 +1330,7 @@ fn main() {
                                     w.set_conversion_progress(0.92);
                                     w.set_conversion_status("Converting... 92%".into());
                                     w.set_progress_path_commands(
-                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.92).into(),
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.92).into(),
                                     );
                                 }
                             });
@@ -1341,7 +1341,7 @@ fn main() {
                                     w.set_conversion_progress(1.0);
                                     w.set_conversion_status("✓ Finished!".into());
                                     w.set_progress_path_commands(
-                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 1.0).into(),
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 1.0).into(),
                                     );
                                 }
                             });
@@ -1382,7 +1382,7 @@ fn main() {
                         w.set_conversion_status("Converting... 0%".into());
                         w.set_status_text("Converting ... 0%".into());
                         w.set_progress_path_commands(
-                            orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                            orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.005).into(),
                         );
                     }
                     if let Ok(job_id) = job_mgr_for_click.submit(src_path.clone(), src_fmt, target_fmt, custom_out) {
@@ -1416,7 +1416,7 @@ fn main() {
                             w.set_conversion_progress(0.0);
                             w.set_conversion_status("Processing... 0%".into());
                             w.set_progress_path_commands(
-                                orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                                orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.005).into(),
                             );
 
                             let w1 = wheel_for_click.clone();
@@ -1425,7 +1425,7 @@ fn main() {
                                     w.set_conversion_progress(0.35);
                                     w.set_conversion_status("Processing... 35%".into());
                                     w.set_progress_path_commands(
-                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.35).into(),
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.35).into(),
                                     );
                                 }
                             });
@@ -1436,7 +1436,7 @@ fn main() {
                                     w.set_conversion_progress(0.70);
                                     w.set_conversion_status("Processing... 70%".into());
                                     w.set_progress_path_commands(
-                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.70).into(),
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.70).into(),
                                     );
                                 }
                             });
@@ -1447,7 +1447,7 @@ fn main() {
                                     w.set_conversion_progress(1.0);
                                     w.set_conversion_status("✓ Finished!".into());
                                     w.set_progress_path_commands(
-                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 1.0).into(),
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 1.0).into(),
                                     );
                                 }
                             });
@@ -1730,7 +1730,7 @@ fn main() {
                                             w.set_conversion_status("Converting... 0%".into());
                                             w.set_status_text("Converting ... 0%".into());
                                             w.set_progress_path_commands(
-                                                orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                                                orbit_ui::build_circular_progress_path(230.0, 230.0, 38.0, 0.005).into(),
                                             );
                                         }
 
