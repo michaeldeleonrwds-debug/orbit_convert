@@ -398,3 +398,52 @@ pub fn build_two_level_action_sectors(
     )
 }
 
+/// Generates SVG path commands for a circular progress arc starting from 12 o'clock and sweeping clockwise.
+/// cx, cy: center coordinates
+/// radius: radius of the arc
+/// progress: value from 0.0 to 1.0
+pub fn build_circular_progress_path(cx: f32, cy: f32, radius: f32, progress: f32) -> String {
+    let p = progress.clamp(0.0, 1.0);
+    if p <= 0.001 {
+        return String::new();
+    }
+    if p >= 0.999 {
+        return format!(
+            "M {:.2} {:.2} A {:.2} {:.2} 0 0 1 {:.2} {:.2} A {:.2} {:.2} 0 0 1 {:.2} {:.2}",
+            cx, cy - radius, radius, radius, cx, cy + radius, radius, radius, cx, cy - radius
+        );
+    }
+    let delta = p * 2.0 * std::f32::consts::PI;
+    let angle_end = -std::f32::consts::FRAC_PI_2 + delta;
+    let x2 = cx + radius * angle_end.cos();
+    let y2 = cy + radius * angle_end.sin();
+    let large_arc = if delta > std::f32::consts::PI { 1 } else { 0 };
+
+    format!(
+        "M {:.2} {:.2} A {:.2} {:.2} 0 {} 1 {:.2} {:.2}",
+        cx, cy - radius, radius, radius, large_arc, x2, y2
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_circular_progress_path() {
+        assert_eq!(build_circular_progress_path(230.0, 230.0, 75.0, 0.0), "");
+        let quarter = build_circular_progress_path(230.0, 230.0, 75.0, 0.25);
+        assert!(quarter.starts_with("M 230.00 155.00"));
+        assert!(quarter.contains("A 75.00 75.00 0 0 1"));
+
+        let half = build_circular_progress_path(230.0, 230.0, 75.0, 0.5);
+        assert!(half.starts_with("M 230.00 155.00"));
+
+        let three_quarter = build_circular_progress_path(230.0, 230.0, 75.0, 0.75);
+        assert!(three_quarter.contains("A 75.00 75.00 0 1 1"));
+
+        let full = build_circular_progress_path(230.0, 230.0, 75.0, 1.0);
+        assert!(full.contains("A 75.00 75.00 0 0 1"));
+    }
+}
+

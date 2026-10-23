@@ -111,6 +111,12 @@ impl JobManager {
         self.history.lock().unwrap().clone()
     }
 
+    /// Retrieve the current record and state for a specific job
+    pub fn get_job(&self, id: JobId) -> Option<JobRecord> {
+        let hist = self.history.lock().unwrap();
+        hist.iter().find(|r| r.id == id).cloned()
+    }
+
     /// Cancel an active or pending conversion job
     pub fn cancel(&self, id: JobId) -> bool {
         let guard = self.active_cancellations.lock().unwrap();

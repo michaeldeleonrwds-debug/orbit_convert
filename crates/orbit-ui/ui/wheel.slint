@@ -36,6 +36,13 @@ export component RadialWheel inherits Window {
     in-out property <string> status_text: "Convert to...";
     in-out property <bool> is_preview: false;
 
+    // Real-time circular loading conversion state
+    in-out property <bool> is_converting: false;
+    in-out property <float> conversion_progress: 0.0;
+    in-out property <string> conversion_status: "Converting...";
+    in-out property <string> conversion_target: "PNG";
+    in-out property <string> progress_path_commands: "";
+
     callback sector_selected(int, bool); // index, is_outer
     callback close_requested();
     callback open_all_formats_requested();
@@ -53,9 +60,20 @@ export component RadialWheel inherits Window {
     }
 
     // -------------------------------------------------------------
-    // LEVEL 2: Concentric Outer Ring (Radius 154px - 220px, 440px diameter)
+    // WHEEL BODY (Visible when NOT converting)
     // -------------------------------------------------------------
-    if root.is_expanded: Rectangle {
+    wheel_body := Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 460px;
+        height: 460px;
+        visible: !root.is_converting;
+        background: transparent;
+
+        // -------------------------------------------------------------
+        // LEVEL 2: Concentric Outer Ring (Radius 154px - 220px, 440px diameter)
+        // -------------------------------------------------------------
+        if root.is_expanded: Rectangle {
         x: 0px;
         y: 0px;
         width: 460px;
@@ -327,6 +345,120 @@ export component RadialWheel inherits Window {
                     horizontal_alignment: center;
                     vertical_alignment: center;
                 }
+            }
+        }
+    }
+    }
+
+    // -------------------------------------------------------------
+    // REAL-TIME CIRCULAR LOADING HUD (0% - 100%)
+    // -------------------------------------------------------------
+    converting_hud := Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 460px;
+        height: 460px;
+        visible: root.is_converting;
+        background: transparent;
+
+        // Outer Dark Obsidian Panel
+        Rectangle {
+            x: 135px;
+            y: 135px;
+            width: 190px;
+            height: 190px;
+            border_radius: 95px;
+            background: #0e121a;
+            border_width: 2px;
+            border_color: root.conversion_progress >= 1.0 ? #10B981 : (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF);
+
+            animate border_color { duration: 150ms; }
+        }
+
+        // Circular background track ring (diameter 150px, radius 75px, centered at 230, 230)
+        Rectangle {
+            x: 155px;
+            y: 155px;
+            width: 150px;
+            height: 150px;
+            border_radius: 75px;
+            border_width: 8px;
+            border_color: #1e2638;
+            background: transparent;
+        }
+
+        // Realtime SVG Progress Arc (radius 75px, stroke_width 8px)
+        Path {
+            x: 0px;
+            y: 0px;
+            width: 460px;
+            height: 460px;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 460;
+            viewbox-height: 460;
+            commands: root.progress_path_commands;
+            stroke: root.conversion_progress >= 1.0 ? #10B981 : (root.wheel_mode == "ACTIONS" ? #8B5CF6 : #248BFF);
+            stroke_width: 8px;
+            fill: transparent;
+
+            animate stroke { duration: 150ms; }
+        }
+
+        // Realtime Conversion Details Inside Ring
+        VerticalLayout {
+            x: 155px;
+            y: 155px;
+            width: 150px;
+            height: 150px;
+            alignment: center;
+            spacing: 5px;
+            padding_left: 8px;
+            padding_right: 8px;
+
+            // Target Badge
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: root.wheel_mode == "ACTIONS" ? 76px : 52px;
+                    height: 22px;
+                    border_radius: 6px;
+                    background: #192233;
+                    border_width: 1px;
+                    border_color: root.conversion_progress >= 1.0 ? #10B981 : (root.wheel_mode == "ACTIONS" ? #A855F7 : #38bdf8);
+
+                    Text {
+                        text: root.conversion_target;
+                        font_size: 11px;
+                        font_weight: 800;
+                        color: #FFFFFF;
+                        horizontal_alignment: center;
+                        vertical_alignment: center;
+                    }
+                }
+            }
+
+            // Real-time Percentage Typography
+            Text {
+                text: Math.round(root.conversion_progress * 100.0) + "%";
+                font_size: 26px;
+                font_weight: 900;
+                color: root.conversion_progress >= 1.0 ? #10B981 : #FFFFFF;
+                horizontal_alignment: center;
+                vertical_alignment: center;
+
+                animate color { duration: 150ms; }
+            }
+
+            // Real-time Status / Caption
+            Text {
+                text: root.conversion_status;
+                font_size: 10px;
+                font_weight: 700;
+                color: root.conversion_progress >= 1.0 ? #34D399 : #94A3B8;
+                horizontal_alignment: center;
+                vertical_alignment: center;
+                overflow: elide;
             }
         }
     }

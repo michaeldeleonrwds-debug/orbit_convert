@@ -28,7 +28,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,14 +297,10 @@ fn main() {
     let config_for_notify = config.clone();
     let interaction_for_notify = interaction.clone();
 
-    // Track live progress notifications per job to throttle desktop popups smoothly
-    let progress_notif_tracker = Arc::new(Mutex::new(std::collections::HashMap::<u64, (i32, Instant)>::new()));
-    let tracker_clone = progress_notif_tracker.clone();
-
     job_manager.set_notification_callback(Arc::new(move |record: &JobRecord| {
         let show_notifs = config_for_notify.lock().unwrap().show_notifications;
 
-        // If conversion is in-progress, update live progress readouts and send desktop progress notification
+        // If conversion is in-progress, update live UI progress readouts in real-time
         if let JobState::Processing { progress } = record.state {
             let pct = (progress * 100.0).round() as i32;
             let status_msg = format!("Converting ... {}%", pct);
@@ -321,9 +317,17 @@ fn main() {
 
             let w_weak = wheel_for_notify.clone();
             let status_w = status_msg.clone();
+            let target_lbl = record.target_format.display_label().to_string();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(w) = w_weak.upgrade() {
+                    w.set_is_converting(true);
+                    w.set_conversion_target(target_lbl.into());
+                    w.set_conversion_progress(progress);
+                    w.set_conversion_status(status_w.clone().into());
                     w.set_status_text(status_w.into());
+                    w.set_progress_path_commands(
+                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, progress).into(),
+                    );
                 }
             });
 
@@ -333,7 +337,7 @@ fn main() {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "file".to_string());
 
-            // Always update tray icon tooltip with real-time conversion progress
+            // Real-time tray icon tooltip
             tray::update_global_tooltip(&format!(
                 "OrbitConvert: {} -> {} ({}%)",
                 fname,
@@ -341,40 +345,10 @@ fn main() {
                 pct
             ));
 
-            // Show Windows notification with progress updates (throttled cleanly to avoid chime spam)
-            if show_notifs {
-                let mut tracker = tracker_clone.lock().unwrap();
-                let should_notify = match tracker.get(&record.id) {
-                    None => true, // First notification when starting
-                    Some(&(last_pct, last_time)) => {
-                        let elapsed_ms = last_time.elapsed().as_millis();
-                        let delta = pct - last_pct;
-                        // Trigger on key milestones (25%, 50%, 75%, 90%) or at least 1.5s + 15% progress
-                        (last_pct < 25 && pct >= 25)
-                            || (last_pct < 50 && pct >= 50)
-                            || (last_pct < 75 && pct >= 75)
-                            || (last_pct < 90 && pct >= 90)
-                            || (elapsed_ms >= 1500 && delta >= 15)
-                    }
-                };
-
-                if should_notify {
-                    tracker.insert(record.id, (pct, Instant::now()));
-                    let title = format!(
-                        "OrbitConvert: Converting to {} ({}%)",
-                        record.target_format.display_label(),
-                        pct
-                    );
-                    let msg = format!("Converting {} ... {}%", fname, pct);
-                    tray::send_global_progress_notification(&title, &msg);
-                }
-            }
-
             return;
         }
 
-        // Clean up progress tracker and restore default tray tooltip
-        tracker_clone.lock().unwrap().remove(&record.id);
+        // Restore default tray tooltip on completion
         tray::update_global_tooltip("OrbitConvert - Hold Alt to Convert");
 
         let is_success = matches!(&record.state, JobState::Completed { .. });
@@ -473,22 +447,36 @@ fn main() {
         let _ = slint::invoke_from_event_loop(move || {
             if let Some(w) = w_weak.upgrade() {
                 if is_success {
+                    w.set_is_converting(true);
+                    w.set_conversion_target(target_lbl.clone().into());
+                    w.set_conversion_progress(1.0);
+                    w.set_conversion_status("✓ Finished!".into());
                     w.set_status_text(format!("✓ Converted to {}!", target_lbl).into());
+                    w.set_progress_path_commands(
+                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 1.0).into(),
+                    );
                 } else {
+                    w.set_is_converting(true);
+                    w.set_conversion_status("✕ Failed".into());
                     w.set_status_text("Conversion failed".into());
                 }
             }
 
+            let delay_ms = if is_success { 650 } else { 1200 };
             let w_hide = w_weak.clone();
-            slint::Timer::single_shot(Duration::from_millis(800), move || {
+            slint::Timer::single_shot(Duration::from_millis(delay_ms), move || {
                 if let Some(w) = w_hide.upgrade() {
                     let _ = w.hide();
+                    w.set_is_converting(false);
+                    w.set_conversion_progress(0.0);
+                    w.set_progress_path_commands("".into());
                 }
                 let mut data = interaction_for_done.lock().unwrap();
                 data.state = AppState::Idle;
                 data.current_highlighted_inner = -1;
                 data.current_highlighted_outer = -1;
                 data.is_expanded = false;
+                data.is_preview = false;
             });
         });
     }));
@@ -1286,9 +1274,6 @@ fn main() {
         let active_id_for_click = active_conversion_id.clone();
         wheel.on_sector_selected(move |idx, is_outer| {
             let mut data = interaction_for_click.lock().unwrap();
-            if data.is_preview {
-                return;
-            }
             if data.wheel_kind == WheelKind::Convert {
                 let target_fmt = if is_outer {
                     data.outer_targets.get(idx as usize).copied()
@@ -1305,6 +1290,84 @@ fn main() {
                     }
                 };
 
+                if data.is_preview {
+                    if let Some(target_fmt) = target_fmt {
+                        let target_lbl = target_fmt.display_label().to_string();
+                        if let Some(w) = wheel_for_click.upgrade() {
+                            w.set_is_converting(true);
+                            w.set_conversion_target(target_lbl.into());
+                            w.set_conversion_progress(0.0);
+                            w.set_conversion_status("Converting... 0%".into());
+                            w.set_progress_path_commands(
+                                orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                            );
+
+                            let w1 = wheel_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(180), move || {
+                                if let Some(w) = w1.upgrade() {
+                                    w.set_conversion_progress(0.28);
+                                    w.set_conversion_status("Converting... 28%".into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.28).into(),
+                                    );
+                                }
+                            });
+
+                            let w2 = wheel_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(450), move || {
+                                if let Some(w) = w2.upgrade() {
+                                    w.set_conversion_progress(0.65);
+                                    w.set_conversion_status("Converting... 65%".into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.65).into(),
+                                    );
+                                }
+                            });
+
+                            let w3 = wheel_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(750), move || {
+                                if let Some(w) = w3.upgrade() {
+                                    w.set_conversion_progress(0.92);
+                                    w.set_conversion_status("Converting... 92%".into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.92).into(),
+                                    );
+                                }
+                            });
+
+                            let w4 = wheel_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(1000), move || {
+                                if let Some(w) = w4.upgrade() {
+                                    w.set_conversion_progress(1.0);
+                                    w.set_conversion_status("✓ Finished!".into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 1.0).into(),
+                                    );
+                                }
+                            });
+
+                            let w5 = wheel_for_click.clone();
+                            let interaction_for_preview = interaction_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(1650), move || {
+                                if let Some(w) = w5.upgrade() {
+                                    let _ = w.hide();
+                                    w.set_is_converting(false);
+                                    w.set_conversion_progress(0.0);
+                                    w.set_progress_path_commands("".into());
+                                    w.set_is_preview(false);
+                                }
+                                let mut data = interaction_for_preview.lock().unwrap();
+                                data.state = AppState::Idle;
+                                data.current_highlighted_inner = -1;
+                                data.current_highlighted_outer = -1;
+                                data.is_expanded = false;
+                                data.is_preview = false;
+                            });
+                        }
+                    }
+                    return;
+                }
+
                 if let (Some(target_fmt), Some(src_path), Some(src_fmt)) =
                     (target_fmt, &data.source_path, data.source_format)
                 {
@@ -1313,7 +1376,14 @@ fn main() {
                         cfg.custom_output_dir.clone()
                     };
                     if let Some(w) = wheel_for_click.upgrade() {
+                        w.set_is_converting(true);
+                        w.set_conversion_target(target_fmt.display_label().into());
+                        w.set_conversion_progress(0.0);
+                        w.set_conversion_status("Converting... 0%".into());
                         w.set_status_text("Converting ... 0%".into());
+                        w.set_progress_path_commands(
+                            orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                        );
                     }
                     if let Ok(job_id) = job_mgr_for_click.submit(src_path.clone(), src_fmt, target_fmt, custom_out) {
                         *active_id_for_click.lock().unwrap() = Some(job_id);
@@ -1336,6 +1406,73 @@ fn main() {
                         return;
                     }
                 };
+
+                if data.is_preview {
+                    if let Some(act) = action {
+                        let act_lbl = act.label().to_string();
+                        if let Some(w) = wheel_for_click.upgrade() {
+                            w.set_is_converting(true);
+                            w.set_conversion_target(act_lbl.into());
+                            w.set_conversion_progress(0.0);
+                            w.set_conversion_status("Processing... 0%".into());
+                            w.set_progress_path_commands(
+                                orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                            );
+
+                            let w1 = wheel_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(200), move || {
+                                if let Some(w) = w1.upgrade() {
+                                    w.set_conversion_progress(0.35);
+                                    w.set_conversion_status("Processing... 35%".into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.35).into(),
+                                    );
+                                }
+                            });
+
+                            let w2 = wheel_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(500), move || {
+                                if let Some(w) = w2.upgrade() {
+                                    w.set_conversion_progress(0.70);
+                                    w.set_conversion_status("Processing... 70%".into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.70).into(),
+                                    );
+                                }
+                            });
+
+                            let w3 = wheel_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(850), move || {
+                                if let Some(w) = w3.upgrade() {
+                                    w.set_conversion_progress(1.0);
+                                    w.set_conversion_status("✓ Finished!".into());
+                                    w.set_progress_path_commands(
+                                        orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 1.0).into(),
+                                    );
+                                }
+                            });
+
+                            let w4 = wheel_for_click.clone();
+                            let interaction_for_preview = interaction_for_click.clone();
+                            slint::Timer::single_shot(Duration::from_millis(1500), move || {
+                                if let Some(w) = w4.upgrade() {
+                                    let _ = w.hide();
+                                    w.set_is_converting(false);
+                                    w.set_conversion_progress(0.0);
+                                    w.set_progress_path_commands("".into());
+                                    w.set_is_preview(false);
+                                }
+                                let mut data = interaction_for_preview.lock().unwrap();
+                                data.state = AppState::Idle;
+                                data.current_highlighted_inner = -1;
+                                data.current_highlighted_outer = -1;
+                                data.is_expanded = false;
+                                data.is_preview = false;
+                            });
+                        }
+                    }
+                    return;
+                }
 
                 if let (Some(act), Some(src_path), Some(src_fmt)) =
                     (action, &data.source_path, data.source_format)
@@ -1367,6 +1504,9 @@ fn main() {
             if let Some(w) = wheel_for_close.upgrade() {
                 let _ = w.hide();
                 w.set_is_preview(false);
+                w.set_is_converting(false);
+                w.set_conversion_progress(0.0);
+                w.set_progress_path_commands("".into());
             }
             let mut data = interaction_for_close.lock().unwrap();
             data.state = AppState::Idle;
@@ -1584,7 +1724,14 @@ fn main() {
                                         };
 
                                         if let Some(w) = wheel_weak.upgrade() {
+                                            w.set_is_converting(true);
+                                            w.set_conversion_target(target_fmt.display_label().into());
+                                            w.set_conversion_progress(0.0);
+                                            w.set_conversion_status("Converting... 0%".into());
                                             w.set_status_text("Converting ... 0%".into());
+                                            w.set_progress_path_commands(
+                                                orbit_ui::build_circular_progress_path(230.0, 230.0, 75.0, 0.005).into(),
+                                            );
                                         }
 
                                         if let Ok(job_id) = job_mgr_clone.submit(
@@ -1781,6 +1928,9 @@ fn main() {
                             if let Some(w) = wheel_weak.upgrade() {
                                 let _ = w.hide();
                                 w.set_is_preview(false);
+                                w.set_is_converting(false);
+                                w.set_conversion_progress(0.0);
+                                w.set_progress_path_commands("".into());
                             }
                             data.state = AppState::Idle;
                             data.current_highlighted_inner = -1;

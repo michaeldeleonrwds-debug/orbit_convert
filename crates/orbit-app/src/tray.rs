@@ -249,6 +249,7 @@ impl TrayManager {
     }
 
     /// Shows a native Windows desktop progress notification without repetitive sound chime.
+    #[allow(dead_code)]
     pub fn show_progress_notification(&self, title: &str, message: &str) {
         unsafe {
             let mut nid = self.nid;
@@ -299,6 +300,7 @@ pub fn send_global_notification(title: &str, message: &str, is_error: bool) {
     }
 }
 
+#[allow(dead_code)]
 pub fn send_global_progress_notification(title: &str, message: &str) {
     unsafe {
         if let Some(tray_ptr) = GLOBAL_TRAY {
